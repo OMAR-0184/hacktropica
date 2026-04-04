@@ -1,9 +1,6 @@
-"""
-_search — Async web search utility for the Curator node.
-
-Uses Tavily via the `tavily-python` package to find core
-articles, videos, and courses for a given learning subtopic.
-"""
+# Async web search utility for the Curator node.
+# Uses Tavily via the `tavily-python` package to find core
+# articles, videos, and courses for a given learning subtopic.
 
 from __future__ import annotations
 
@@ -19,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 def _build_query(topic: str, subtopic: str, suffix: str = "") -> str:
-    """Build a focused search query string."""
+    "Build a focused search query string."
     base = f"{subtopic} {topic}" if topic and topic.lower() != subtopic.lower() else subtopic
     return f"{base} {suffix}".strip()
 
 
 async def _tavily_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
-    """Asynchronous Tavily search."""
+    "Asynchronous Tavily search."
     settings = get_settings()
     if not settings.tavily_api_key:
         logger.warning("No TAVILY_API_KEY found in settings.")
@@ -51,7 +48,7 @@ async def _tavily_search(query: str, max_results: int = 5) -> list[dict[str, str
 async def search_articles(
     topic: str, subtopic: str, max_results: int | None = None
 ) -> list[dict[str, str]]:
-    """Search for tutorial articles and documentation."""
+    "Search for tutorial articles and documentation."
     settings = get_settings()
     n = max_results or settings.search_max_articles
     query = _build_query(topic, subtopic, "tutorial guide explanation")
@@ -61,7 +58,7 @@ async def search_articles(
 async def search_videos(
     topic: str, subtopic: str, max_results: int | None = None
 ) -> list[dict[str, str]]:
-    """Search for YouTube / educational videos."""
+    "Search for YouTube / educational videos."
     settings = get_settings()
     n = max_results or settings.search_max_videos
     query = _build_query(topic, subtopic, "youtube video tutorial")
@@ -71,7 +68,7 @@ async def search_videos(
 async def search_courses(
     topic: str, subtopic: str, max_results: int | None = None
 ) -> list[dict[str, str]]:
-    """Search for courses on major platforms (Coursera, Udemy, Khan Academy, edX)."""
+    "Search for courses on major platforms (Coursera, Udemy, Khan Academy, edX)."
     settings = get_settings()
     n = max_results or settings.search_max_courses
     query = _build_query(topic, subtopic, "online course free")
@@ -81,7 +78,7 @@ async def search_courses(
 async def search_all(
     topic: str, subtopic: str
 ) -> dict[str, list[dict[str, str]]]:
-    """Run all three searches concurrently and return combined results."""
+    "Run all three searches concurrently and return combined results."
     articles, videos, courses = await asyncio.gather(
         search_articles(topic, subtopic),
         search_videos(topic, subtopic),
