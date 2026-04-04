@@ -7,7 +7,7 @@ from arq.connections import RedisSettings
 from api.config import get_api_settings
 from api.database.core import Base, engine
 from api.database import models as _db_models  # noqa: F401
-from api.routers import auth
+from api.routers import auth, learning, search
 
 _settings = get_api_settings()
 
@@ -41,6 +41,8 @@ app.add_middleware(
 
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+app.include_router(learning.router, prefix="/learning", tags=["Learning"])
+app.include_router(search.router, prefix="/learning", tags=["Search"])
 
 
 @app.get("/")
