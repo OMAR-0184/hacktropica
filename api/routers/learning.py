@@ -1918,6 +1918,20 @@ def _build_add_node_updates(values: dict[str, Any], payload: GraphNodeCreateRequ
             "add_to_frontier": bool(payload.add_to_frontier),
         }
     )
+    history_out.append(
+        {
+            "type": "lesson",
+            "subtopic": node_id,
+            "lesson": _build_starter_lesson_payload(
+                topic=str(values.get("topic", "") or ""),
+                node_id=node_id,
+                parent_node_id=parent_node_id,
+                node_kind=payload.node_kind,
+                is_math_heavy=bool(node_meta.get("is_math_heavy", False)),
+            ),
+            "source": "graph_add_starter",
+        }
+    )
     history_out = history_out[-_GRAPH_HISTORY_LIMIT:]
 
     return (
@@ -1935,6 +1949,52 @@ def _build_add_node_updates(values: dict[str, Any], payload: GraphNodeCreateRequ
         },
         node_id,
     )
+
+
+def _build_starter_lesson_payload(
+    *,
+    topic: str,
+    node_id: str,
+    parent_node_id: str,
+    node_kind: str,
+    is_math_heavy: bool,
+) -> dict[str, Any]:
+    level_hint = {
+        "concept": "foundational concept",
+        "advanced": "advanced topic",
+        "remediation": "targeted remediation topic",
+    }.get(str(node_kind).strip().lower(), "concept")
+    math_hint = (
+        "Include worked numeric examples and step-by-step calculations."
+        if is_math_heavy
+        else "Focus on intuition, patterns, and practical interpretation."
+    )
+    explanation = (
+        f"This is a starter lesson for '{node_id}' under '{parent_node_id}' in '{topic}'. "
+        f"Treat it as a {level_hint}. {math_hint}"
+    ).strip()
+    return {
+        "tutor_content": {
+            "learning_objective": f"Understand and apply {node_id} in the context of {topic}.",
+            "explanation": explanation,
+            "examples": [
+                f"Identify where '{node_id}' appears in common {topic} problems.",
+                f"Compare '{node_id}' with related concepts under '{parent_node_id}'.",
+            ],
+            "common_misconception": f"Assuming '{node_id}' is interchangeable with sibling concepts.",
+            "practice_task": f"Solve 2 quick exercises using '{node_id}' and explain your reasoning.",
+            "code_snippet": None,
+        },
+        "curator_content": {
+            "articles": [],
+            "videos": [],
+            "courses": [],
+            "references": [
+                f"Review parent node: {parent_node_id}",
+                f"Revisit broader topic: {topic}" if topic else f"Revisit related topic to {node_id}",
+            ],
+        },
+    }
 
 
 def _build_delete_node_updates(
