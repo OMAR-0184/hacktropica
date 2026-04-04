@@ -1,9 +1,7 @@
 """
 _search — Async web search utility for the Curator node.
 
-Uses Tavily via the `tavily-python` package to find core
-articles, videos, and courses for a given learning subtopic.
-"""
+
 
 from __future__ import annotations
 
