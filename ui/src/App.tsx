@@ -1,8 +1,11 @@
-import React, { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AuthModule }   from './components/AuthModule';
 import { GraphCanvas }  from './components/GraphCanvas';
+import { LandingPage }  from './components/landing/LandingPage';
 
 function App() {
+  const [currentView, setCurrentView] = useState<'landing' | 'auth'>('landing');
+
   useEffect(() => {
     // Handle token from OAuth redirect query param
     const params = new URLSearchParams(window.location.search);
@@ -16,8 +19,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center p-4">
-
+    <div className={`min-h-screen bg-background relative overflow-hidden flex flex-col items-center ${currentView === 'auth' ? 'justify-center p-4' : ''}`}>
       {/* ── Interactive graph canvas ── */}
       <GraphCanvas />
 
@@ -56,19 +58,31 @@ function App() {
       />
 
       {/* ── Main content ── */}
-      <div className="relative z-10 w-full max-w-[420px]">
-        <AuthModule />
+      {currentView === 'landing' ? (
+        <LandingPage onGetStarted={() => setCurrentView('auth')} />
+      ) : (
+        <div className="relative z-10 w-full max-w-[420px] animate-fade-up">
+          {/* Back button */}
+          <button 
+            onClick={() => setCurrentView('landing')}
+            className="mb-6 flex items-center gap-2 text-sm text-gray-500 hover:text-white transition-colors"
+          >
+            ← Back to Home
+          </button>
+          
+          <AuthModule />
 
-        {/* ── Footer ── */}
-        <p className="mt-6 text-center text-xs text-gray-700">
-          By continuing, you agree to Hacktropica's{' '}
-          <a href="#terms" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors"
-             onClick={(e) => e.preventDefault()}>Terms</a>
-          {' '}and{' '}
-          <a href="#privacy" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors"
-             onClick={(e) => e.preventDefault()}>Privacy Policy</a>.
-        </p>
-      </div>
+          {/* ── Footer ── */}
+          <p className="mt-6 text-center text-xs text-gray-700">
+            By continuing, you agree to Hacktropica's{' '}
+            <a href="#terms" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors"
+              onClick={(e) => e.preventDefault()}>Terms</a>
+            {' '}and{' '}
+            <a href="#privacy" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors"
+              onClick={(e) => e.preventDefault()}>Privacy Policy</a>.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

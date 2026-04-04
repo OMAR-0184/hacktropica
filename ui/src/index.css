@@ -165,6 +165,35 @@
       0 0 80px rgba(14,165,233,0.04);
   }
 
+  .glass-panel {
+    @apply relative rounded-2xl overflow-hidden;
+    background: rgba(13, 17, 23, 0.6);
+    backdrop-filter: blur(16px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+
+  .glass-panel::before {
+    content: '';
+    @apply absolute inset-0 rounded-2xl pointer-events-none opacity-0 transition-opacity duration-300;
+    box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.2) inset, 0 0 20px rgba(14, 165, 233, 0.1) inset;
+  }
+  
+  .glass-panel:hover::before {
+    @apply opacity-100;
+  }
+
+  .tilt-card {
+    @apply transition-transform duration-300 ease-out;
+    transform: perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1);
+  }
+
+  .tilt-card:hover {
+    transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) scale3d(1.01, 1.01, 1.01);
+    z-index: 10;
+  }
+
   /* ── Divider ─────────────────────────────────────── */
   .divider {
     @apply relative flex items-center my-5;

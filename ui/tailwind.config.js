@@ -52,6 +52,8 @@ export default {
         'slide-out-right': 'slide-out-right 0.3s ease-in both',
         'shimmer':         'shimmer 2s linear infinite',
         'glow-pulse':      'glow-pulse 3s ease-in-out infinite',
+        'stream-flow':     'stream-flow 2s linear infinite',
+        'draw':            'draw 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
       },
       keyframes: {
         'node-ping': {
@@ -85,6 +87,14 @@ export default {
         'glow-pulse': {
           '0%, 100%': { opacity: '0.4', filter: 'blur(60px)' },
           '50%':      { opacity: '0.7', filter: 'blur(80px)' },
+        },
+        'stream-flow': {
+          '0%': { strokeDashoffset: '20' },
+          '100%': { strokeDashoffset: '0' },
+        },
+        'draw': {
+          '0%': { strokeDashoffset: '1000' },
+          '100%': { strokeDashoffset: '0' },
         },
       },
       boxShadow: {
