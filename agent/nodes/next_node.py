@@ -13,6 +13,8 @@ from typing import Any
 
 from agent.state import CognimapState
 
+_HISTORY_LIMIT = 300
+
 
 async def next_node_generator(state: CognimapState) -> dict[str, Any]:
     """Mark progress and choose the next node from the remaining frontier."""
@@ -107,6 +109,7 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
             "journey_mode": journey_mode,
             "backtrack": is_backtrack,
         })
+    history = history[-_HISTORY_LIMIT:]
 
     return {
         "current_node": next_subtopic,

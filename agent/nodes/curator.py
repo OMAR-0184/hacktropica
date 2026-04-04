@@ -99,8 +99,12 @@ async def curator_node(state: CognimapState) -> dict[str, Any]:
         logger.warning("[curator] No search results found, returning empty content")
         curator_content = dict(_DEFAULTS)
 
-    # Ensure the raw search results are preserved for transparency
-    curator_content["_raw_search_results"] = search_results
+    # Keep payload compact for checkpoint/history stability.
+    curator_content["search_summary"] = {
+        "articles_found": len(search_results.get("articles", [])),
+        "videos_found": len(search_results.get("videos", [])),
+        "courses_found": len(search_results.get("courses", [])),
+    }
 
     lesson = dict(state.get("lesson", {}))
     lesson["curator_content"] = curator_content

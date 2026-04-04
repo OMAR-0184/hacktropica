@@ -11,6 +11,8 @@ from agent.nodes._mcq import determine_next_action, grade_mcq
 from agent.nodes._tree import build_node_meta, generate_child_blueprint, infer_math_heavy
 from agent.state import CognimapState
 
+_HISTORY_LIMIT = 300
+
 
 async def evaluator_node(state: CognimapState) -> dict[str, Any]:
     """Score the user's quiz answers deterministically (no LLM grading)."""
@@ -149,6 +151,7 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
         "next_action": evaluation.get("next_action", "next_topic"),
         "journey_mode": journey_mode,
     })
+    history = history[-_HISTORY_LIMIT:]
 
     return {
         "evaluation": evaluation,

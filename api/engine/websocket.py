@@ -26,12 +26,13 @@ class ConnectionManager:
                 self.pubsub_task = asyncio.create_task(self._listen_to_redis())
         self.active_connections[session_id].append(websocket)
 
-    def disconnect(self, websocket: WebSocket, session_id: str):
+    async def disconnect(self, websocket: WebSocket, session_id: str):
         if session_id in self.active_connections:
             if websocket in self.active_connections[session_id]:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
                 del self.active_connections[session_id]
+                await self.pubsub.unsubscribe(f"session:{session_id}")
 
     async def _listen_to_redis(self):
         async for message in self.pubsub.listen():
@@ -40,11 +41,14 @@ class ConnectionManager:
                 data = message["data"].decode()
                 session_id = channel.split(":")[1]
                 if session_id in self.active_connections:
-                    for connection in self.active_connections[session_id]:
+                    dead_connections: list[WebSocket] = []
+                    for connection in list(self.active_connections[session_id]):
                         try:
                             await connection.send_text(data)
                         except Exception:
-                            pass
+                            dead_connections.append(connection)
+                    for dead in dead_connections:
+                        await self.disconnect(dead, session_id)
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)

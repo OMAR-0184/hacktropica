@@ -11,7 +11,7 @@ from sqlalchemy import select, desc, func
 from jose import JWTError, jwt
 
 from api.config import get_api_settings
-from api.database.core import get_db
+from api.database.core import get_db, SessionLocal
 from api.database.models import User, Session as DBSession, NodeState
 from api.routers.auth import get_current_user
 from api.topic_validation import validate_learning_topic_with_moderation
@@ -34,6 +34,7 @@ router = APIRouter()
 _settings = get_api_settings()
 _LOCAL_LOCKS: dict[str, float] = {}
 _LOCAL_IDEMPOTENCY: dict[str, tuple[float, dict[str, Any]]] = {}
+_PROGRESS_HISTORY_LIMIT = 200
 
 
 # ── WebSocket (with token auth) ──────────────────────────────
@@ -63,13 +64,19 @@ async def websocket_endpoint(
         await websocket.close(code=4001, reason="Invalid token")
         return
 
+    allowed = await _websocket_has_session_access(session_id, email)
+    if not allowed:
+        await websocket.close(code=4003, reason="Session access denied")
+        return
+
     await manager.connect(websocket, session_id)
     try:
         while True:
-            data = await websocket.receive_text()
-            await manager.send_personal_message(f"Echo: {data}", websocket)
+            await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(websocket, session_id)
+        pass
+    finally:
+        await manager.disconnect(websocket, session_id)
 
 
 # ── Session Management ────────────────────────────────────────
@@ -213,8 +220,12 @@ async def get_lesson(
     session_id: str,
     current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
+    node_id: str | None = Query(
+        default=None,
+        description="Optional node id to fetch lesson content for a specific node.",
+    ),
 ):
-    """Get the current lesson content (tutor explanation + curated resources)."""
+    """Get lesson content for the active node or a specific node from session history."""
     db_session = await _get_user_session(session_id, current_user.id, db)
 
     # State guards
@@ -223,7 +234,7 @@ async def get_lesson(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot fetch lesson while session is '{db_session.status}'. Wait for 'ready'."
         )
-    if db_session.status in ["completed", "error", "archived"]:
+    if db_session.status in ["error", "archived"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is '{db_session.status}' and cannot proceed."
@@ -234,22 +245,83 @@ async def get_lesson(
         raise HTTPException(status_code=400, detail="Graph not initialized or still processing initial steps.")
 
     state_vals = snapshot.values
-    current_node = state_vals.get("current_node")
-    lesson = state_vals.get("lesson", {})
+    current_node = str(state_vals.get("current_node", "") or "")
+    target_node = str(node_id or "").strip() or current_node
     subtopics = state_vals.get("subtopics", [])
-    node_meta = _get_node_meta(state_vals, current_node)
+    if target_node != current_node:
+        catalog = state_vals.get("node_catalog", {})
+        if not isinstance(catalog, dict) or target_node not in catalog:
+            raise HTTPException(status_code=404, detail=f"Node '{target_node}' is not part of this session.")
 
-    # Parse tutor_content into typed model
+    lesson = _resolve_lesson_payload(
+        values=state_vals,
+        target_node=target_node,
+        current_node=current_node,
+    )
+    if lesson is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "LESSON_NOT_GENERATED",
+                "message": f"Lesson content for node '{target_node}' is not generated yet.",
+                "hint": "Select this node as your next branch and continue learning to generate it.",
+            },
+        )
+
+    node_meta = _get_node_meta(state_vals, target_node)
+    tutor_content, curator_content = _parse_lesson_payload(lesson)
+
+    # Determine if this is a remediation lesson
+    is_remediation = target_node not in subtopics if target_node else False
+
+    return LessonResponse(
+        session_id=session_id,
+        node_id=target_node,
+        tutor_content=tutor_content,
+        curator_content=curator_content,
+        is_remediation=is_remediation,
+        parent_node_id=node_meta.get("parent_node_id"),
+        depth=node_meta.get("depth"),
+        node_kind=node_meta.get("node_kind"),
+        path_from_root=node_meta.get("path_from_root", []),
+        is_math_heavy=node_meta.get("is_math_heavy"),
+        is_expanded=node_meta.get("is_expanded"),
+    )
+
+
+def _resolve_lesson_payload(values: dict[str, Any], target_node: str, current_node: str) -> dict[str, Any] | None:
+    if target_node == current_node:
+        current_lesson = values.get("lesson", {})
+        if isinstance(current_lesson, dict) and current_lesson:
+            return current_lesson
+
+    history = values.get("history", [])
+    if not isinstance(history, list):
+        return None
+
+    for entry in reversed(history):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") != "lesson":
+            continue
+        subtopic = str(entry.get("subtopic", "") or "").strip()
+        if subtopic != target_node:
+            continue
+        lesson = entry.get("lesson", {})
+        if isinstance(lesson, dict) and lesson:
+            return lesson
+    return None
+
+
+def _parse_lesson_payload(lesson: dict[str, Any]) -> tuple[TutorContent | None, CuratorContent | None]:
     raw_tutor = lesson.get("tutor_content")
     tutor_content = None
     if isinstance(raw_tutor, dict):
         expl = raw_tutor.get("explanation", "")
         if isinstance(expl, dict):
-            import json
             expl = json.dumps(expl, indent=2)
         elif not isinstance(expl, str):
             expl = str(expl)
-
         tutor_content = TutorContent(
             learning_objective=str(raw_tutor.get("learning_objective", "")),
             explanation=expl,
@@ -259,7 +331,6 @@ async def get_lesson(
             code_snippet=raw_tutor.get("code_snippet"),
         )
 
-    # Parse curator_content into typed model
     raw_curator = lesson.get("curator_content")
     curator_content = None
     if isinstance(raw_curator, dict):
@@ -288,25 +359,10 @@ async def get_lesson(
                 )
                 for c in raw_curator.get("courses", []) if isinstance(c, dict)
             ],
-            references=raw_curator.get("references", []),
+            references=[str(r) for r in raw_curator.get("references", []) if isinstance(r, str)],
         )
 
-    # Determine if this is a remediation lesson
-    is_remediation = current_node not in subtopics if current_node else False
-
-    return LessonResponse(
-        session_id=session_id,
-        node_id=current_node,
-        tutor_content=tutor_content,
-        curator_content=curator_content,
-        is_remediation=is_remediation,
-        parent_node_id=node_meta.get("parent_node_id"),
-        depth=node_meta.get("depth"),
-        node_kind=node_meta.get("node_kind"),
-        path_from_root=node_meta.get("path_from_root", []),
-        is_math_heavy=node_meta.get("is_math_heavy"),
-        is_expanded=node_meta.get("is_expanded"),
-    )
+    return tutor_content, curator_content
 
 
 @router.get("/{session_id}/quiz", response_model=QuizResponse)
@@ -584,15 +640,45 @@ async def continue_learning(
             )
 
         if "evaluator" in waiting_on:
+            options = _derive_forward_choices(values)
+            traversal_mode = _normalize_traversal_mode(req.traversal_mode or values.get("traversal_mode"))
+            recommendation = _recommend_next_node(values, options, traversal_mode)
+            selected_node = str(req.selected_node or "").strip()
+
+            if selected_node:
+                if selected_node not in options:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail={
+                            "code": "INVALID_SELECTED_NODE",
+                            "message": "selected_node is not available from the current frontier.",
+                            "allowed_options": options,
+                        },
+                    )
+                await set_next_choice(
+                    session_id,
+                    selected_node=selected_node,
+                    traversal_mode=req.traversal_mode,
+                )
+            elif req.traversal_mode:
+                await set_next_choice(session_id, traversal_mode=req.traversal_mode)
+
             if req.answers is None:
+                message = "Quiz answers are required to continue."
+                if selected_node:
+                    message = f"{message} Next node '{selected_node}' has been saved."
                 response_obj = ContinueResponse(
                     session_id=session_id,
                     status="needs_input",
                     action="take_quiz",
-                    message="Quiz answers are required to continue.",
+                    message=message,
                     journey_mode=journey_mode,
                     can_go_back=can_go_back,
                     previous_node=previous_node,
+                    options=options,
+                    recommended_node=recommendation["node"],
+                    recommendation_reason=recommendation["reason"],
+                    recommendation_factors=recommendation["factors"],
                     required_input="answers",
                     enqueued=False,
                     request_status="accepted",
@@ -613,15 +699,28 @@ async def continue_learning(
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
 
             pool = request.app.state.arq_pool
-            await pool.enqueue_job("resume_learning_task", session_id, validated_answers)
+            try:
+                await pool.enqueue_job("resume_learning_task", session_id, validated_answers)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Queue unavailable while submitting evaluation: {exc}",
+                )
+            message = "Answers accepted. Evaluation is processing."
+            if selected_node:
+                message = f"{message} Next node '{selected_node}' is queued."
             response_obj = ContinueResponse(
                 session_id=session_id,
                 status="processing",
                 action="submit_evaluation",
-                message="Answers accepted. Evaluation is processing.",
+                message=message,
                 journey_mode=journey_mode,
                 can_go_back=can_go_back,
                 previous_node=previous_node,
+                options=options,
+                recommended_node=recommendation["node"],
+                recommendation_reason=recommendation["reason"],
+                recommendation_factors=recommendation["factors"],
                 enqueued=True,
                 request_status="accepted",
                 request_id=resolved_request_id,
@@ -700,7 +799,17 @@ async def continue_learning(
                 traversal_mode=traversal_mode,
             )
             pool = request.app.state.arq_pool
-            await pool.enqueue_job("advance_learning_task", session_id)
+            try:
+                await pool.enqueue_job("advance_learning_task", session_id)
+            except Exception as exc:
+                try:
+                    await set_next_choice(session_id, selected_node="")
+                except Exception:
+                    pass
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"Queue unavailable while advancing session: {exc}",
+                )
             response_obj = ContinueResponse(
                 session_id=session_id,
                 status="processing",
@@ -886,7 +995,17 @@ async def next_step(
 
         # Dispatch to ARQ worker
         pool = request.app.state.arq_pool
-        await pool.enqueue_job("advance_learning_task", session_id)
+        try:
+            await pool.enqueue_job("advance_learning_task", session_id)
+        except Exception as exc:
+            try:
+                await set_next_choice(session_id, selected_node="")
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Queue unavailable while advancing session: {exc}",
+            )
         return {
             "status": "processing",
             "message": "Graph advancing.",
@@ -950,6 +1069,10 @@ async def get_progress(
     total_count = len(raw_subtopics)
     completed_count = sum(1 for st in raw_subtopics if mastery.get(st, False))
     overall_progress = completed_count / total_count if total_count > 0 else 0.0
+    history_payload = vals.get("history", [])
+    if not isinstance(history_payload, list):
+        history_payload = []
+    history_payload = history_payload[-_PROGRESS_HISTORY_LIMIT:]
 
     return ProgressResponse(
         session_id=session_id,
@@ -960,7 +1083,7 @@ async def get_progress(
         overall_progress=round(overall_progress, 2),
         completed_count=completed_count,
         total_count=total_count,
-        history=vals.get("history", []),
+        history=history_payload,
         traversal_mode=_normalize_traversal_mode(vals.get("traversal_mode")),
         active_frontier=_normalize_node_list(vals.get("active_frontier", [])),
         current_path=_normalize_node_list(vals.get("current_path", [])),
@@ -982,7 +1105,39 @@ async def get_workflow_snapshot(
     db_session = await _get_user_session(session_id, current_user.id, db)
     snapshot = await get_current_state(session_id)
     if not snapshot or not snapshot.values:
-        raise HTTPException(status_code=400, detail="Graph not initialized.")
+        session_status = getattr(db_session, "status", None) or "unknown"
+        waiting_on: list[str] = []
+        action_payload = _build_next_action_payload(
+            session_id=session_id,
+            session_status=session_status,
+            values={},
+            waiting_on=waiting_on,
+        )
+        return WorkflowSnapshotResponse(
+            session_id=session_id,
+            status=session_status,
+            current_phase=getattr(db_session, "current_phase", None),
+            topic=str(getattr(db_session, "topic", "") or ""),
+            current_node="",
+            journey_mode=_normalize_journey_mode(None),
+            traversal_mode=_normalize_traversal_mode(None),
+            waiting_on=waiting_on,
+            next_action=action_payload.get("action"),
+            options=action_payload.get("options", []),
+            recommended_node=action_payload.get("recommended_node"),
+            recommendation_reason=action_payload.get("recommendation_reason"),
+            recommendation_factors=action_payload.get("recommendation_factors", {}),
+            lesson_ready=False,
+            quiz_ready=False,
+            evaluation_ready=False,
+            quiz_question_count=0,
+            numerical_target_ratio=0.0,
+            actual_numerical_ratio=0.0,
+            active_frontier=[],
+            current_path=[],
+            children_map={},
+            node_catalog=[],
+        )
 
     vals = snapshot.values
     waiting_on = _snapshot_next_nodes(snapshot)
@@ -1054,6 +1209,18 @@ async def _get_user_session(session_id: str, user_id: int, db: AsyncSession) -> 
     return db_session
 
 
+async def _websocket_has_session_access(session_id: str, email: str) -> bool:
+    if not session_id or not email:
+        return False
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(DBSession.id)
+            .join(User, DBSession.user_id == User.id)
+            .filter(DBSession.id == session_id, User.email == email)
+        )
+        return result.scalar_one_or_none() is not None
+
+
 def _snapshot_next_nodes(snapshot) -> list[str]:
     nodes = getattr(snapshot, "next", ()) or ()
     if isinstance(nodes, (list, tuple)):
@@ -1098,11 +1265,15 @@ def _recommend_next_node(values: dict, options: list[str], traversal_mode: str) 
 
     scores = values.get("scores", {})
     graph_nodes = values.get("graph_nodes", {})
+    mastery = values.get("mastery", {})
     navigation_stack = values.get("navigation_stack", [])
+    journey_mode = _normalize_journey_mode(values.get("journey_mode"))
     if not isinstance(scores, dict):
         scores = {}
     if not isinstance(graph_nodes, dict):
         graph_nodes = {}
+    if not isinstance(mastery, dict):
+        mastery = {}
     if not isinstance(navigation_stack, list):
         navigation_stack = []
     node_catalog = values.get("node_catalog", {})
@@ -1113,6 +1284,19 @@ def _recommend_next_node(values: dict, options: list[str], traversal_mode: str) 
     current_node = str(values.get("current_node", "") or "")
     current_meta = node_catalog.get(current_node, {})
     current_depth = _safe_int(current_meta.get("depth", 0), 0) if isinstance(current_meta, dict) else 0
+    current_kind = str(current_meta.get("node_kind", "concept") or "concept").lower() if isinstance(current_meta, dict) else "concept"
+
+    has_pending_concept = False
+    for node in options:
+        meta = node_catalog.get(node, {})
+        kind = str(meta.get("node_kind", "concept") or "concept").lower() if isinstance(meta, dict) else "concept"
+        if kind != "concept":
+            continue
+        if mastery.get(node, False):
+            continue
+        has_pending_concept = True
+        break
+
     scored: list[tuple[str, float, dict[str, Any]]] = []
     for idx, node in enumerate(options):
         hist_score = scores.get(node)
@@ -1138,10 +1322,29 @@ def _recommend_next_node(values: dict, options: list[str], traversal_mode: str) 
         attempt_penalty = -min(float(attempts), 5.0)
         node_meta = node_catalog.get(node, {})
         node_depth = _safe_int(node_meta.get("depth", 0), 0) if isinstance(node_meta, dict) else 0
+        node_kind = str(node_meta.get("node_kind", "concept") or "concept").lower() if isinstance(node_meta, dict) else "concept"
         depth_delta = node_depth - current_depth
         depth_factor = float(depth_delta) if traversal_mode == "dfs" else float(-depth_delta)
+        sequencing_bonus = 0.0
+        if journey_mode == "learn":
+            if node_kind == "concept":
+                sequencing_bonus += 10.0
+            elif node_kind == "advanced":
+                sequencing_bonus -= 10.0
+            if current_kind == "intro" and node_kind == "advanced":
+                sequencing_bonus -= 8.0
+            if has_pending_concept and node_kind == "advanced":
+                sequencing_bonus -= 12.0
 
-        total = historical_priority + unseen_bonus + recency_penalty + tiebreak + attempt_penalty + depth_factor
+        total = (
+            historical_priority
+            + unseen_bonus
+            + recency_penalty
+            + tiebreak
+            + attempt_penalty
+            + depth_factor
+            + sequencing_bonus
+        )
         scored.append(
             (
                 node,
@@ -1152,6 +1355,9 @@ def _recommend_next_node(values: dict, options: list[str], traversal_mode: str) 
                     "recency_penalty": round(recency_penalty, 3),
                     "attempt_penalty": round(attempt_penalty, 3),
                     "depth_factor": round(depth_factor, 3),
+                    "sequencing_bonus": round(sequencing_bonus, 3),
+                    "node_kind": node_kind,
+                    "journey_mode": journey_mode,
                     "traversal_tiebreak": round(tiebreak, 6),
                     "historical_score": normalized,
                 },
@@ -1161,7 +1367,7 @@ def _recommend_next_node(values: dict, options: list[str], traversal_mode: str) 
     best_node, _, factors = max(scored, key=lambda x: x[1])
     reason = (
         f"Recommended by deterministic priority ({traversal_mode.upper()} mode): "
-        "weaker/unseen areas first, recently visited nodes deprioritized, then traversal tie-break."
+        "weaker/unseen areas first, foundational concept sequencing, recently visited nodes deprioritized, then traversal tie-break."
     )
     return {"node": best_node, "reason": reason, "factors": factors}
 
@@ -1256,17 +1462,17 @@ def _build_next_action_payload(
             "session_id": session_id,
             "action": "take_quiz",
             "status": "ready",
-            "message": "Submit quiz answers to continue.",
+            "message": "Submit quiz answers to continue. Optionally preselect your next branch.",
             "current_node": current_node,
             "waiting_on": waiting_on,
-            "options": [],
+            "options": options,
             "traversal_mode": traversal_mode,
             "journey_mode": journey_mode,
             "can_go_back": can_go_back,
             "previous_node": previous_node if v2_enabled else None,
-            "recommended_node": None,
-            "recommendation_reason": None,
-            "recommendation_factors": {},
+            "recommended_node": recommendation["node"],
+            "recommendation_reason": recommendation["reason"],
+            "recommendation_factors": recommendation["factors"],
             "required_input": "answers",
             **hierarchy_payload,
         }
