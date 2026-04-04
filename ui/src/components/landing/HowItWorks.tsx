@@ -1,5 +1,4 @@
-import React from 'react';
-import { Search, BrainCircuit, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Search, BrainCircuit, ShieldCheck } from 'lucide-react';
 
 export function HowItWorks() {
   const steps = [
