@@ -274,6 +274,7 @@ class GraphNodeMutationResponse(BaseModel):
     message: str
     current_node: str = ""
     added_node: Optional[NodeHierarchyMeta] = None
+    added_nodes: List[NodeHierarchyMeta] = []
     removed_nodes: List[str] = []
     options: List[str] = []
     active_frontier: List[str] = []
