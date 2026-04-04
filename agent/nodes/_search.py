@@ -1,9 +1,7 @@
 """
 _search — Async web search utility for the Curator node.
 
-Uses DuckDuckGo via the `ddgs` package (free, no API key) to find real
-articles, videos, and courses for a given learning subtopic.
-"""
+
 
 from __future__ import annotations
 
@@ -11,7 +9,7 @@ import asyncio
 import logging
 from typing import Any
 
-from ddgs import DDGS
+from tavily import AsyncTavilyClient
 
 from agent.config import get_settings
 
@@ -24,51 +22,27 @@ def _build_query(topic: str, subtopic: str, suffix: str = "") -> str:
     return f"{base} {suffix}".strip()
 
 
-async def _async_search_text(query: str, max_results: int = 5) -> list[dict[str, str]]:
-    """Asynchronous DuckDuckGo text search."""
+async def _tavily_search(query: str, max_results: int = 5) -> list[dict[str, str]]:
+    """Asynchronous Tavily search."""
+    settings = get_settings()
+    if not settings.tavily_api_key:
+        logger.warning("No TAVILY_API_KEY found in settings.")
+        return []
+    
     try:
-        # ddgs>=9 exposes a synchronous API; offload to a worker thread.
-        def _run() -> list[dict[str, Any]]:
-            with DDGS(timeout=10) as ddgs:
-                return ddgs.text(query, max_results=max_results)
-
-        raw = await asyncio.to_thread(_run)
+        client = AsyncTavilyClient(api_key=settings.tavily_api_key)
+        response = await client.search(query=query, search_depth="basic", max_results=max_results)
         return [
             {
                 "title": r.get("title", ""),
-                "url": r.get("href", ""),
-                "snippet": r.get("body", ""),
+                "url": r.get("url", ""),
+                "snippet": r.get("content", ""),
             }
-            for r in raw
-            if r.get("href")
+            for r in response.get("results", [])
+            if r.get("url")
         ]
     except Exception as exc:
-        logger.warning("DuckDuckGo text search failed for %r: %s", query, exc)
-        return []
-
-
-async def _async_search_videos(query: str, max_results: int = 3) -> list[dict[str, str]]:
-    """Asynchronous DuckDuckGo video search."""
-    try:
-        # ddgs>=9 exposes a synchronous API; offload to a worker thread.
-        def _run() -> list[dict[str, Any]]:
-            with DDGS(timeout=10) as ddgs:
-                return ddgs.videos(query, max_results=max_results)
-
-        raw = await asyncio.to_thread(_run)
-        results = []
-        for r in raw:
-            url = r.get("content", "") or r.get("embed_url", "")
-            if not url:
-                continue
-            results.append({
-                "title": r.get("title", ""),
-                "url": url,
-                "snippet": r.get("description", ""),
-            })
-        return results
-    except Exception as exc:
-        logger.warning("DuckDuckGo video search failed for %r: %s", query, exc)
+        logger.warning("Tavily search failed for %r: %s", query, exc)
         return []
 
 
@@ -79,7 +53,7 @@ async def search_articles(
     settings = get_settings()
     n = max_results or settings.search_max_articles
     query = _build_query(topic, subtopic, "tutorial guide explanation")
-    return await _async_search_text(query, n)
+    return await _tavily_search(query, n)
 
 
 async def search_videos(
@@ -88,8 +62,8 @@ async def search_videos(
     """Search for YouTube / educational videos."""
     settings = get_settings()
     n = max_results or settings.search_max_videos
-    query = _build_query(topic, subtopic, "tutorial")
-    return await _async_search_videos(query, n)
+    query = _build_query(topic, subtopic, "youtube video tutorial")
+    return await _tavily_search(query, n)
 
 
 async def search_courses(
@@ -99,7 +73,7 @@ async def search_courses(
     settings = get_settings()
     n = max_results or settings.search_max_courses
     query = _build_query(topic, subtopic, "online course free")
-    return await _async_search_text(query, n)
+    return await _tavily_search(query, n)
 
 
 async def search_all(
