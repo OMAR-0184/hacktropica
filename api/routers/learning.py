@@ -15,8 +15,9 @@ from api.database.core import get_db, SessionLocal
 from api.database.models import User, Session as DBSession, NodeState
 from api.routers.auth import get_current_user
 from api.topic_validation import validate_learning_topic_with_moderation
+from agent.config import get_settings as get_agent_settings
 from agent.nodes._mcq import validate_mcq_submission
-from agent.nodes._tree import build_node_meta, infer_math_heavy
+from agent.nodes._tree import build_node_meta, infer_math_heavy, generate_child_blueprint
 from api.schemas.learning import (
     LearningRequest, StartResponse, LessonResponse,
     EvaluateRequest, EvaluateResponse, ProgressResponse,
@@ -261,14 +262,27 @@ async def get_lesson(
         current_node=current_node,
     )
     if lesson is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "LESSON_NOT_GENERATED",
-                "message": f"Lesson content for node '{target_node}' is not generated yet.",
-                "hint": "Select this node as your next branch and continue learning to generate it.",
-            },
+        node_meta = _get_node_meta(state_vals, target_node)
+        parent_node_id = str(node_meta.get("parent_node_id") or current_node or "").strip()
+        node_kind = str(node_meta.get("node_kind", "concept") or "concept")
+        lesson = _build_starter_lesson_payload(
+            topic=str(state_vals.get("topic", "") or ""),
+            node_id=target_node,
+            parent_node_id=parent_node_id or "Root",
+            node_kind=node_kind,
+            is_math_heavy=bool(node_meta.get("is_math_heavy", False)),
         )
+        try:
+            updates = _append_lesson_to_history(
+                state_vals,
+                target_node=target_node,
+                lesson_payload=lesson,
+                source="on_demand_starter",
+            )
+            await apply_state_updates(session_id, updates)
+        except Exception:
+            # Lesson is still returned even if checkpoint persistence fails.
+            pass
 
     node_meta = _get_node_meta(state_vals, target_node)
     tutor_content, curator_content = _parse_lesson_payload(lesson)
@@ -1304,6 +1318,70 @@ async def delete_graph_node(
         await _release_progression_lock(lock_key)
 
 
+@router.post("/{session_id}/nodes/{node_id}/expand", response_model=GraphNodeMutationResponse)
+async def expand_graph_node(
+    session_id: str,
+    node_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """Expand an existing node by generating child nodes on demand."""
+    db_session = await _get_user_session(session_id, current_user.id, db)
+    if db_session.status != "ready":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot modify graph while session is '{db_session.status}'.",
+        )
+
+    lock_ok, lock_key = await _acquire_progression_lock(session_id)
+    if not lock_ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A progression request is already in progress for this session.",
+        )
+    try:
+        snapshot = await get_current_state(session_id)
+        if not snapshot or not snapshot.values:
+            raise HTTPException(status_code=400, detail="Graph not initialized.")
+
+        waiting_on = _snapshot_next_nodes(snapshot)
+        try:
+            updates, added_node_ids = await _build_expand_node_updates(snapshot.values, node_id=node_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+
+        if updates:
+            await apply_state_updates(session_id, updates)
+            merged = dict(snapshot.values)
+            merged.update(updates)
+        else:
+            merged = dict(snapshot.values)
+
+        node_catalog = _build_node_catalog_list(merged)
+        added_nodes = [meta for meta in node_catalog if meta.node_id in set(added_node_ids)]
+        options = _derive_available_choices(
+            merged,
+            waiting_on=waiting_on,
+            enable_backtracking=_is_journey_v2_enabled(merged),
+        )
+        message = f"Expanded '{node_id}'. Added {len(added_node_ids)} child node(s)."
+        return GraphNodeMutationResponse(
+            session_id=session_id,
+            status="updated",
+            message=message,
+            current_node=str(merged.get("current_node", "") or ""),
+            added_node=added_nodes[0] if len(added_nodes) == 1 else None,
+            added_nodes=added_nodes,
+            removed_nodes=[],
+            options=options,
+            active_frontier=_normalize_node_list(merged.get("active_frontier", [])),
+            children_map=_normalize_children_map(merged.get("children_map", {})),
+            node_catalog=node_catalog,
+        )
+    finally:
+        await _release_progression_lock(lock_key)
+
+
 # ── Delete / Archive ──────────────────────────────────────────
 
 @router.delete("/{session_id}")
@@ -1918,21 +1996,19 @@ def _build_add_node_updates(values: dict[str, Any], payload: GraphNodeCreateRequ
             "add_to_frontier": bool(payload.add_to_frontier),
         }
     )
-    history_out.append(
-        {
-            "type": "lesson",
-            "subtopic": node_id,
-            "lesson": _build_starter_lesson_payload(
-                topic=str(values.get("topic", "") or ""),
-                node_id=node_id,
-                parent_node_id=parent_node_id,
-                node_kind=payload.node_kind,
-                is_math_heavy=bool(node_meta.get("is_math_heavy", False)),
-            ),
-            "source": "graph_add_starter",
-        }
+    lesson_payload = _build_starter_lesson_payload(
+        topic=str(values.get("topic", "") or ""),
+        node_id=node_id,
+        parent_node_id=parent_node_id,
+        node_kind=payload.node_kind,
+        is_math_heavy=bool(node_meta.get("is_math_heavy", False)),
     )
-    history_out = history_out[-_GRAPH_HISTORY_LIMIT:]
+    history_out = _append_lesson_entries(
+        history_out,
+        target_node=node_id,
+        lesson_payload=lesson_payload,
+        source="graph_add_starter",
+    )
 
     return (
         {
@@ -1995,6 +2071,214 @@ def _build_starter_lesson_payload(
             ],
         },
     }
+
+
+def _append_lesson_entries(
+    history: list[dict[str, Any]],
+    *,
+    target_node: str,
+    lesson_payload: dict[str, Any],
+    source: str,
+) -> list[dict[str, Any]]:
+    out = list(history)
+    out.append(
+        {
+            "type": "lesson",
+            "subtopic": target_node,
+            "lesson": lesson_payload,
+            "source": source,
+        }
+    )
+    return out[-_GRAPH_HISTORY_LIMIT:]
+
+
+def _append_lesson_to_history(
+    values: dict[str, Any],
+    *,
+    target_node: str,
+    lesson_payload: dict[str, Any],
+    source: str,
+) -> dict[str, Any]:
+    history = values.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    return {
+        "history": _append_lesson_entries(
+            list(history),
+            target_node=target_node,
+            lesson_payload=lesson_payload,
+            source=source,
+        )
+    }
+
+
+async def _build_expand_node_updates(values: dict[str, Any], *, node_id: str) -> tuple[dict[str, Any], list[str]]:
+    target = str(node_id or "").strip()
+    if not target:
+        raise ValueError("node_id cannot be empty.")
+
+    node_catalog = values.get("node_catalog", {})
+    if not isinstance(node_catalog, dict) or target not in node_catalog:
+        raise ValueError(f"Node '{target}' was not found in this session.")
+
+    parent_meta = node_catalog.get(target, {})
+    if not isinstance(parent_meta, dict):
+        parent_meta = {}
+    parent_kind = str(parent_meta.get("node_kind", "concept") or "concept").lower()
+    if parent_kind == "remediation":
+        raise ValueError("Remediation nodes cannot be manually expanded.")
+
+    children_map = _normalize_children_map(values.get("children_map", {}))
+    existing_children = list(children_map.get(target, []))
+
+    settings = get_agent_settings()
+    topic = str(values.get("topic", "") or "")
+    course_mode = str(values.get("course_mode", "detailed") or "detailed")
+    parent_depth = _safe_int(parent_meta.get("depth", 0), 0)
+    weak_areas_map = values.get("weak_areas", {})
+    if not isinstance(weak_areas_map, dict):
+        weak_areas_map = {}
+    weak_areas = weak_areas_map.get(target, [])
+    if not isinstance(weak_areas, list):
+        weak_areas = []
+
+    existing_titles = {str(k).strip().lower() for k in node_catalog.keys()}
+    existing_titles.update(str(st).strip().lower() for st in _normalize_node_list(values.get("subtopics", [])))
+
+    child_blueprint = await generate_child_blueprint(
+        topic=topic,
+        parent_node=target,
+        parent_depth=parent_depth,
+        weak_areas=weak_areas,
+        min_children=max(1, int(settings.tree_min_children)),
+        max_children=max(int(settings.tree_min_children), int(settings.tree_max_children)),
+        course_mode=course_mode,
+        existing_titles=existing_titles,
+    )
+
+    if not isinstance(child_blueprint, list):
+        child_blueprint = []
+
+    graph_nodes = values.get("graph_nodes", {})
+    if not isinstance(graph_nodes, dict):
+        graph_nodes = {}
+    parent_map = values.get("parent_map", {})
+    if not isinstance(parent_map, dict):
+        parent_map = {}
+    subtopics = _normalize_node_list(values.get("subtopics", []))
+    active_frontier = _normalize_node_list(values.get("active_frontier", []))
+    available_choices = _normalize_node_list(values.get("available_choices", []))
+    mastery = values.get("mastery", {})
+    if not isinstance(mastery, dict):
+        mastery = {}
+    weak_areas_out = dict(weak_areas_map)
+    expanded_nodes = _normalize_node_list(values.get("expanded_nodes", []))
+    parent_path = parent_meta.get("path_from_root", [target])
+    if not isinstance(parent_path, list) or not parent_path:
+        parent_path = [target]
+
+    node_catalog_out = dict(node_catalog)
+    graph_nodes_out = dict(graph_nodes)
+    parent_map_out = dict(parent_map)
+    children_map_out = dict(children_map)
+    subtopics_out = list(subtopics)
+    active_frontier_out = list(active_frontier)
+    available_choices_out = list(available_choices)
+    mastery_out = dict(mastery)
+    expanded_nodes_out = list(expanded_nodes)
+
+    added_node_ids: list[str] = []
+    history = values.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    history_out = list(history)
+
+    for item in child_blueprint:
+        if not isinstance(item, dict):
+            continue
+        child_id = str(item.get("title", "")).strip()
+        if not child_id:
+            continue
+        if child_id in node_catalog_out:
+            continue
+
+        child_kind = str(item.get("node_kind", "concept") or "concept").lower()
+        if child_kind not in {"concept", "advanced"}:
+            child_kind = "concept"
+        child_math = bool(item.get("is_math_heavy", infer_math_heavy(child_id)))
+
+        node_meta = build_node_meta(
+            node_id=child_id,
+            parent_node_id=target,
+            depth=parent_depth + 1,
+            node_kind=child_kind,
+            is_math_heavy=child_math,
+            parent_path=[str(p).strip() for p in parent_path if str(p).strip()],
+            is_expanded=False,
+        )
+        node_catalog_out[child_id] = node_meta
+        graph_nodes_out[child_id] = {"status": "unlocked", "attempts": 0, "best_score": 0.0}
+        parent_map_out[child_id] = target
+        children_map_out.setdefault(child_id, [])
+        if child_id not in subtopics_out:
+            subtopics_out.append(child_id)
+        if child_id not in active_frontier_out:
+            active_frontier_out.append(child_id)
+        if child_id not in available_choices_out:
+            available_choices_out.append(child_id)
+        mastery_out[child_id] = False
+        weak_areas_out[child_id] = []
+        added_node_ids.append(child_id)
+
+        starter = _build_starter_lesson_payload(
+            topic=topic,
+            node_id=child_id,
+            parent_node_id=target,
+            node_kind=child_kind,
+            is_math_heavy=child_math,
+        )
+        history_out = _append_lesson_entries(
+            history_out,
+            target_node=child_id,
+            lesson_payload=starter,
+            source="graph_expand_starter",
+        )
+
+    merged_children = list(existing_children)
+    for child in added_node_ids:
+        if child not in merged_children:
+            merged_children.append(child)
+    children_map_out[target] = merged_children
+
+    parent_meta_out = dict(node_catalog_out.get(target, {}))
+    parent_meta_out["is_expanded"] = True
+    node_catalog_out[target] = parent_meta_out
+    if target not in expanded_nodes_out:
+        expanded_nodes_out.append(target)
+
+    history_out.append(
+        {
+            "type": "graph_expand_node",
+            "node_id": target,
+            "children_added": list(added_node_ids),
+        }
+    )
+    history_out = history_out[-_GRAPH_HISTORY_LIMIT:]
+
+    updates = {
+        "node_catalog": node_catalog_out,
+        "graph_nodes": graph_nodes_out,
+        "parent_map": parent_map_out,
+        "children_map": children_map_out,
+        "subtopics": subtopics_out,
+        "active_frontier": active_frontier_out,
+        "available_choices": available_choices_out,
+        "mastery": mastery_out,
+        "weak_areas": weak_areas_out,
+        "expanded_nodes": expanded_nodes_out,
+        "history": history_out,
+    }
+    return updates, added_node_ids
 
 
 def _build_delete_node_updates(
