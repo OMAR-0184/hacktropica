@@ -11,6 +11,8 @@ from agent.nodes._llm_call import invoke_llm_json
 from agent.nodes._tree import build_node_meta, infer_math_heavy
 from agent.state import CognimapState
 
+_HISTORY_LIMIT = 300
+
 _SYSTEM_PROMPT = """\
 You are a learning remediation specialist. A learner struggled with certain
 concepts within a subtopic. Create a focused micro-lesson to address the weak
@@ -46,13 +48,21 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         },
     )
 
-    bridge_topic = bridge_data.get("bridge_topic", f"Remediation: {current}")
+    bridge_topic = str(bridge_data.get("bridge_topic", f"Remediation: {current}") or "").strip()
 
     graph_nodes = dict(state.get("graph_nodes", {}))
     node_catalog = dict(state.get("node_catalog", {}))
     parent_map = dict(state.get("parent_map", {}))
     children_map = dict(state.get("children_map", {}))
     active_frontier = list(state.get("active_frontier", []))
+    existing_ids = {str(node).strip() for node in node_catalog.keys()}
+    existing_ids.update(str(node).strip() for node in graph_nodes.keys())
+    existing_ids.update(str(node).strip() for node in state.get("subtopics", []))
+    bridge_topic = _ensure_unique_bridge_topic(
+        bridge_topic or f"Remediation: {current}",
+        existing_ids=existing_ids,
+    )
+
     graph_nodes[bridge_topic] = {
         "status": "unlocked",
         "attempts": 0,
@@ -88,6 +98,7 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         "bridge_topic": bridge_topic,
         "focus_areas": bridge_data.get("focus_areas", weak),
     })
+    history = history[-_HISTORY_LIMIT:]
 
     remediation_count = state.get("remediation_count", 0) + 1
     navigation_stack = list(state.get("navigation_stack", []))
@@ -114,3 +125,15 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         "lesson": {},
         "evaluation": {},
     }
+
+
+def _ensure_unique_bridge_topic(base_topic: str, *, existing_ids: set[str]) -> str:
+    seed = str(base_topic or "").strip() or "Remediation"
+    if seed not in existing_ids:
+        return seed
+    suffix = 2
+    while True:
+        candidate = f"{seed} ({suffix})"
+        if candidate not in existing_ids:
+            return candidate
+        suffix += 1

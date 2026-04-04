@@ -3,6 +3,7 @@ import traceback
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import DBAPIError
 from redis.exceptions import ConnectionError
 
@@ -17,12 +18,25 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     """
     if isinstance(exc, HTTPException):
         # Convert standard FastAPI HTTPException to our envelope
+        detail = exc.detail
+        if isinstance(detail, dict):
+            message = str(detail.get("message") or detail.get("code") or "Request failed.")
+        else:
+            message = str(detail)
         err = ErrorDetail(
             code="HTTP_ERROR",
-            message=str(exc.detail),
+            message=message,
             status=exc.status_code,
         )
         return JSONResponse(status_code=exc.status_code, content=ErrorResponse(error=err).model_dump())
+
+    if isinstance(exc, RequestValidationError):
+        err = ErrorDetail(
+            code="VALIDATION_ERROR",
+            message="Request payload/query validation failed.",
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+        return JSONResponse(status_code=422, content=ErrorResponse(error=err).model_dump())
 
     if isinstance(exc, DBAPIError):
         # Database connectivity or execution issues

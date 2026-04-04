@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from arq import create_pool
 from arq.connections import RedisSettings
@@ -7,6 +8,7 @@ from arq.connections import RedisSettings
 from api.config import get_api_settings
 from api.database.core import Base, engine
 from api.database import models as _db_models  # noqa: F401
+from api.middleware.error_handler import global_exception_handler
 from api.routers import auth, learning, search
 
 _settings = get_api_settings()
@@ -14,9 +16,11 @@ _settings = get_api_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _settings.validate_runtime()
     # Bootstrap schema for local/dev environments without Alembic setup.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if not _settings.is_production():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     # Create the ARQ Redis pool
     app.state.arq_pool = await create_pool(RedisSettings.from_dsn(_settings.redis_url))
     yield
@@ -38,6 +42,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_exception_handler(Exception, global_exception_handler)
+app.add_exception_handler(HTTPException, global_exception_handler)
+app.add_exception_handler(RequestValidationError, global_exception_handler)
 
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
