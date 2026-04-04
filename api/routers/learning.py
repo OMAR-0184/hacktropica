@@ -16,6 +16,7 @@ from api.database.models import User, Session as DBSession, NodeState
 from api.routers.auth import get_current_user
 from api.topic_validation import validate_learning_topic_with_moderation
 from agent.nodes._mcq import validate_mcq_submission
+from agent.nodes._tree import build_node_meta, infer_math_heavy
 from api.schemas.learning import (
     LearningRequest, StartResponse, LessonResponse,
     EvaluateRequest, EvaluateResponse, ProgressResponse,
@@ -24,9 +25,9 @@ from api.schemas.learning import (
     TutorContent, CuratorContent, CuratorResource,
     EvaluationResult, SubtopicProgress, NodeHierarchyMeta, WorkflowSnapshotResponse,
     SessionStatusResponse, SessionSummary, SessionListResponse,
-    QuizResponse, QuizQuestion,
+    QuizResponse, QuizQuestion, GraphNodeCreateRequest, GraphNodeMutationResponse,
 )
-from api.engine.runner import get_current_state, set_next_choice
+from api.engine.runner import get_current_state, set_next_choice, apply_state_updates
 from api.engine.websocket import manager
 
 router = APIRouter()
@@ -35,6 +36,7 @@ _settings = get_api_settings()
 _LOCAL_LOCKS: dict[str, float] = {}
 _LOCAL_IDEMPOTENCY: dict[str, tuple[float, dict[str, Any]]] = {}
 _PROGRESS_HISTORY_LIMIT = 200
+_GRAPH_HISTORY_LIMIT = 300
 
 
 # ── WebSocket (with token auth) ──────────────────────────────
@@ -1181,6 +1183,127 @@ async def get_workflow_snapshot(
     )
 
 
+# ── Graph Node Management ────────────────────────────────────
+
+@router.post("/{session_id}/nodes", response_model=GraphNodeMutationResponse)
+async def add_graph_node(
+    session_id: str,
+    payload: GraphNodeCreateRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a new node to the session knowledge graph."""
+    db_session = await _get_user_session(session_id, current_user.id, db)
+    if db_session.status != "ready":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot modify graph while session is '{db_session.status}'.",
+        )
+
+    lock_ok, lock_key = await _acquire_progression_lock(session_id)
+    if not lock_ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A progression request is already in progress for this session.",
+        )
+    try:
+        snapshot = await get_current_state(session_id)
+        if not snapshot or not snapshot.values:
+            raise HTTPException(status_code=400, detail="Graph not initialized.")
+
+        waiting_on = _snapshot_next_nodes(snapshot)
+        try:
+            updates, added_node_id = _build_add_node_updates(snapshot.values, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+
+        await apply_state_updates(session_id, updates)
+        merged = dict(snapshot.values)
+        merged.update(updates)
+        node_catalog = _build_node_catalog_list(merged)
+        added_node = next((meta for meta in node_catalog if meta.node_id == added_node_id), None)
+        options = _derive_available_choices(
+            merged,
+            waiting_on=waiting_on,
+            enable_backtracking=_is_journey_v2_enabled(merged),
+        )
+        return GraphNodeMutationResponse(
+            session_id=session_id,
+            status="updated",
+            message=f"Node '{added_node_id}' added successfully.",
+            current_node=str(merged.get("current_node", "") or ""),
+            added_node=added_node,
+            removed_nodes=[],
+            options=options,
+            active_frontier=_normalize_node_list(merged.get("active_frontier", [])),
+            children_map=_normalize_children_map(merged.get("children_map", {})),
+            node_catalog=node_catalog,
+        )
+    finally:
+        await _release_progression_lock(lock_key)
+
+
+@router.delete("/{session_id}/nodes/{node_id}", response_model=GraphNodeMutationResponse)
+async def delete_graph_node(
+    session_id: str,
+    node_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+    cascade: bool = Query(default=True, description="Delete child subtree recursively."),
+):
+    """Delete a node (and optionally its descendants) from the session knowledge graph."""
+    db_session = await _get_user_session(session_id, current_user.id, db)
+    if db_session.status != "ready":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot modify graph while session is '{db_session.status}'.",
+        )
+
+    lock_ok, lock_key = await _acquire_progression_lock(session_id)
+    if not lock_ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A progression request is already in progress for this session.",
+        )
+    try:
+        snapshot = await get_current_state(session_id)
+        if not snapshot or not snapshot.values:
+            raise HTTPException(status_code=400, detail="Graph not initialized.")
+
+        waiting_on = _snapshot_next_nodes(snapshot)
+        try:
+            updates, removed_nodes = _build_delete_node_updates(
+                snapshot.values,
+                node_id=node_id,
+                cascade=cascade,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
+
+        await apply_state_updates(session_id, updates)
+        merged = dict(snapshot.values)
+        merged.update(updates)
+        options = _derive_available_choices(
+            merged,
+            waiting_on=waiting_on,
+            enable_backtracking=_is_journey_v2_enabled(merged),
+        )
+        return GraphNodeMutationResponse(
+            session_id=session_id,
+            status="updated",
+            message=f"Removed {len(removed_nodes)} node(s) from the graph.",
+            current_node=str(merged.get("current_node", "") or ""),
+            added_node=None,
+            removed_nodes=removed_nodes,
+            options=options,
+            active_frontier=_normalize_node_list(merged.get("active_frontier", [])),
+            children_map=_normalize_children_map(merged.get("children_map", {})),
+            node_catalog=_build_node_catalog_list(merged),
+        )
+    finally:
+        await _release_progression_lock(lock_key)
+
+
 # ── Delete / Archive ──────────────────────────────────────────
 
 @router.delete("/{session_id}")
@@ -1696,6 +1819,271 @@ def _normalize_children_map(value: Any) -> dict[str, list[str]]:
                 if child_id:
                     child_list.append(child_id)
         out[parent_id] = child_list
+    return out
+
+
+def _build_add_node_updates(values: dict[str, Any], payload: GraphNodeCreateRequest) -> tuple[dict[str, Any], str]:
+    node_id = str(payload.node_id or "").strip()
+    if not node_id:
+        raise ValueError("node_id cannot be empty.")
+
+    node_catalog = values.get("node_catalog", {})
+    if not isinstance(node_catalog, dict):
+        node_catalog = {}
+    graph_nodes = values.get("graph_nodes", {})
+    if not isinstance(graph_nodes, dict):
+        graph_nodes = {}
+    subtopics = _normalize_node_list(values.get("subtopics", []))
+
+    if node_id in node_catalog or node_id in graph_nodes or node_id in subtopics:
+        raise ValueError(f"Node '{node_id}' already exists in this session.")
+
+    current_node = str(values.get("current_node", "") or "").strip()
+    parent_node_id = str(payload.parent_node_id or "").strip() or current_node
+    if not parent_node_id:
+        raise ValueError("parent_node_id is required when current_node is unavailable.")
+    if parent_node_id not in node_catalog:
+        raise ValueError(f"Parent node '{parent_node_id}' was not found.")
+
+    parent_meta = node_catalog.get(parent_node_id, {})
+    if not isinstance(parent_meta, dict):
+        parent_meta = {}
+    parent_depth = _safe_int(parent_meta.get("depth", 0), 0)
+    parent_path = parent_meta.get("path_from_root", [parent_node_id])
+    if not isinstance(parent_path, list) or not parent_path:
+        parent_path = [parent_node_id]
+    inferred_math = infer_math_heavy(node_id) or bool(parent_meta.get("is_math_heavy", False))
+    node_meta = build_node_meta(
+        node_id=node_id,
+        parent_node_id=parent_node_id,
+        depth=parent_depth + 1,
+        node_kind=payload.node_kind,
+        is_math_heavy=bool(payload.is_math_heavy) if payload.is_math_heavy is not None else inferred_math,
+        parent_path=[str(p).strip() for p in parent_path if str(p).strip()],
+        is_expanded=False,
+    )
+
+    node_catalog_out = dict(node_catalog)
+    node_catalog_out[node_id] = node_meta
+
+    graph_nodes_out = dict(graph_nodes)
+    graph_nodes_out[node_id] = {"status": "unlocked", "attempts": 0, "best_score": 0.0}
+
+    subtopics_out = list(subtopics)
+    subtopics_out.append(node_id)
+
+    parent_map = values.get("parent_map", {})
+    if not isinstance(parent_map, dict):
+        parent_map = {}
+    parent_map_out = dict(parent_map)
+    parent_map_out[node_id] = parent_node_id
+
+    children_map_out = _normalize_children_map(values.get("children_map", {}))
+    parent_children = list(children_map_out.get(parent_node_id, []))
+    if node_id not in parent_children:
+        parent_children.append(node_id)
+    children_map_out[parent_node_id] = parent_children
+    children_map_out.setdefault(node_id, [])
+
+    active_frontier_out = _normalize_node_list(values.get("active_frontier", []))
+    available_choices_out = _normalize_node_list(values.get("available_choices", []))
+    if payload.add_to_frontier:
+        if node_id not in active_frontier_out:
+            active_frontier_out.append(node_id)
+        if node_id not in available_choices_out:
+            available_choices_out.append(node_id)
+
+    mastery = values.get("mastery", {})
+    if not isinstance(mastery, dict):
+        mastery = {}
+    mastery_out = dict(mastery)
+    mastery_out[node_id] = False
+
+    weak_areas = values.get("weak_areas", {})
+    if not isinstance(weak_areas, dict):
+        weak_areas = {}
+    weak_areas_out = dict(weak_areas)
+    weak_areas_out[node_id] = []
+
+    history = values.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    history_out = list(history)
+    history_out.append(
+        {
+            "type": "graph_add_node",
+            "node_id": node_id,
+            "parent_node_id": parent_node_id,
+            "node_kind": payload.node_kind,
+            "add_to_frontier": bool(payload.add_to_frontier),
+        }
+    )
+    history_out = history_out[-_GRAPH_HISTORY_LIMIT:]
+
+    return (
+        {
+            "node_catalog": node_catalog_out,
+            "graph_nodes": graph_nodes_out,
+            "subtopics": subtopics_out,
+            "parent_map": parent_map_out,
+            "children_map": children_map_out,
+            "active_frontier": active_frontier_out,
+            "available_choices": available_choices_out,
+            "mastery": mastery_out,
+            "weak_areas": weak_areas_out,
+            "history": history_out,
+        },
+        node_id,
+    )
+
+
+def _build_delete_node_updates(
+    values: dict[str, Any],
+    *,
+    node_id: str,
+    cascade: bool,
+) -> tuple[dict[str, Any], list[str]]:
+    target = str(node_id or "").strip()
+    if not target:
+        raise ValueError("node_id cannot be empty.")
+
+    node_catalog = values.get("node_catalog", {})
+    if not isinstance(node_catalog, dict):
+        node_catalog = {}
+    graph_nodes = values.get("graph_nodes", {})
+    if not isinstance(graph_nodes, dict):
+        graph_nodes = {}
+    subtopics = _normalize_node_list(values.get("subtopics", []))
+    known_nodes = set(node_catalog.keys()) | set(graph_nodes.keys()) | set(subtopics)
+    if target not in known_nodes:
+        raise ValueError(f"Node '{target}' was not found in this session.")
+
+    parent_map = values.get("parent_map", {})
+    if not isinstance(parent_map, dict):
+        parent_map = {}
+    parent_node_id = parent_map.get(target)
+    if parent_node_id is None and isinstance(node_catalog.get(target), dict):
+        parent_node_id = node_catalog.get(target, {}).get("parent_node_id")
+    if parent_node_id is None:
+        raise ValueError("Cannot delete the root node.")
+
+    current_node = str(values.get("current_node", "") or "").strip()
+    if target == current_node:
+        raise ValueError("Cannot delete the currently active node.")
+
+    children_map = _normalize_children_map(values.get("children_map", {}))
+    target_children = list(children_map.get(target, []))
+    if target_children and not cascade:
+        raise ValueError("Node has children. Set cascade=true to delete the subtree.")
+
+    removed_nodes = _collect_subtree_nodes(target, children_map) if cascade else [target]
+    removed_set = set(removed_nodes)
+    if current_node and current_node in removed_set:
+        raise ValueError("Cannot delete a subtree that contains the currently active node.")
+
+    node_catalog_out = dict(node_catalog)
+    graph_nodes_out = dict(graph_nodes)
+    parent_map_out = dict(parent_map)
+
+    for node in removed_nodes:
+        node_catalog_out.pop(node, None)
+        graph_nodes_out.pop(node, None)
+        parent_map_out.pop(node, None)
+
+    children_map_out: dict[str, list[str]] = {}
+    for parent, children in children_map.items():
+        if parent in removed_set:
+            continue
+        kept = [child for child in children if child not in removed_set]
+        children_map_out[parent] = kept
+
+    subtopics_out = [node for node in subtopics if node not in removed_set]
+    active_frontier_out = [node for node in _normalize_node_list(values.get("active_frontier", [])) if node not in removed_set]
+    available_choices_out = [node for node in _normalize_node_list(values.get("available_choices", [])) if node not in removed_set]
+    expanded_nodes_out = [node for node in _normalize_node_list(values.get("expanded_nodes", [])) if node not in removed_set]
+
+    mastery = values.get("mastery", {})
+    if not isinstance(mastery, dict):
+        mastery = {}
+    mastery_out = {k: v for k, v in mastery.items() if k not in removed_set}
+
+    scores = values.get("scores", {})
+    if not isinstance(scores, dict):
+        scores = {}
+    scores_out = {k: v for k, v in scores.items() if k not in removed_set}
+
+    weak_areas = values.get("weak_areas", {})
+    if not isinstance(weak_areas, dict):
+        weak_areas = {}
+    weak_areas_out = {k: v for k, v in weak_areas.items() if k not in removed_set}
+
+    navigation_stack = [node for node in _normalize_node_list(values.get("navigation_stack", [])) if node not in removed_set]
+    if current_node and not navigation_stack:
+        navigation_stack = [current_node]
+
+    selected_next_node = str(values.get("selected_next_node", "") or "").strip()
+    if selected_next_node in removed_set:
+        selected_next_node = ""
+
+    current_path = _normalize_node_list(values.get("current_path", []))
+    if any(node in removed_set for node in current_path):
+        current_meta = node_catalog_out.get(current_node, {})
+        replacement = current_meta.get("path_from_root", [current_node] if current_node else [])
+        if not isinstance(replacement, list):
+            replacement = [current_node] if current_node else []
+        current_path = [str(node).strip() for node in replacement if str(node).strip()]
+
+    history = values.get("history", [])
+    if not isinstance(history, list):
+        history = []
+    history_out = list(history)
+    history_out.append(
+        {
+            "type": "graph_delete_node",
+            "node_id": target,
+            "cascade": bool(cascade),
+            "removed_nodes": list(removed_nodes),
+        }
+    )
+    history_out = history_out[-_GRAPH_HISTORY_LIMIT:]
+
+    return (
+        {
+            "node_catalog": node_catalog_out,
+            "graph_nodes": graph_nodes_out,
+            "parent_map": parent_map_out,
+            "children_map": children_map_out,
+            "subtopics": subtopics_out,
+            "active_frontier": active_frontier_out,
+            "available_choices": available_choices_out,
+            "expanded_nodes": expanded_nodes_out,
+            "mastery": mastery_out,
+            "scores": scores_out,
+            "weak_areas": weak_areas_out,
+            "navigation_stack": navigation_stack,
+            "selected_next_node": selected_next_node,
+            "current_path": current_path,
+            "history": history_out,
+        },
+        removed_nodes,
+    )
+
+
+def _collect_subtree_nodes(root_node: str, children_map: dict[str, list[str]]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    stack = [root_node]
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue
+        seen.add(node)
+        out.append(node)
+        children = children_map.get(node, [])
+        for child in reversed(children):
+            child_id = str(child).strip()
+            if child_id and child_id not in seen:
+                stack.append(child_id)
     return out
 
 

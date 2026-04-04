@@ -33,6 +33,14 @@ class ContinueRequest(BaseModel):
     client_request_id: Optional[str] = None
 
 
+class GraphNodeCreateRequest(BaseModel):
+    node_id: str = Field(..., min_length=1, max_length=160)
+    parent_node_id: Optional[str] = None
+    node_kind: Literal["concept", "advanced", "remediation"] = "concept"
+    is_math_heavy: Optional[bool] = None
+    add_to_frontier: bool = True
+
+
 class QuizQuestion(BaseModel):
     question_id: str
     question: str
@@ -256,6 +264,19 @@ class WorkflowSnapshotResponse(BaseModel):
     actual_numerical_ratio: float = 0.0
     active_frontier: List[str] = []
     current_path: List[str] = []
+    children_map: Dict[str, List[str]] = {}
+    node_catalog: List[NodeHierarchyMeta] = []
+
+
+class GraphNodeMutationResponse(BaseModel):
+    session_id: str
+    status: str = "updated"
+    message: str
+    current_node: str = ""
+    added_node: Optional[NodeHierarchyMeta] = None
+    removed_nodes: List[str] = []
+    options: List[str] = []
+    active_frontier: List[str] = []
     children_map: Dict[str, List[str]] = {}
     node_catalog: List[NodeHierarchyMeta] = []
 

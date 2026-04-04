@@ -1,6 +1,7 @@
 import json
 import logging
 import traceback
+from typing import Any
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from redis.asyncio import Redis
@@ -110,6 +111,20 @@ async def set_next_choice(session_id: str, selected_node: str | None = None, tra
             updates["traversal_mode"] = normalized_mode
 
     if not updates:
+        return
+
+    async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
+        await checkpointer.setup()
+        graph = build_graph(checkpointer=checkpointer)
+        config = {"configurable": {"thread_id": session_id}}
+        await graph.aupdate_state(config, updates)
+
+
+async def apply_state_updates(session_id: str, updates: dict[str, Any]) -> None:
+    """
+    Apply a partial state patch directly to the graph checkpoint.
+    """
+    if not isinstance(updates, dict) or not updates:
         return
 
     async with AsyncPostgresSaver.from_conn_string(DB_URI) as checkpointer:
