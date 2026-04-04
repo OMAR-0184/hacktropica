@@ -52,10 +52,22 @@ export function LandingHero({ onGetStarted }: LandingHeroProps) {
       {/* ── Scaled Knowledge Frontier Visualization ── */}
       <div className="relative w-full max-w-5xl h-[300px] md:h-[400px] mt-24 mb-16 mx-auto animate-fade-up perspective-[2000px]" style={{ animationDelay: '500ms' }}>
         
-        {/* Abstract Data Streams (Background of node) */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-60">
-          <div className="w-[120%] h-full rounded-[100%] border border-primary-500/20 shadow-[0_0_80px_rgba(14,165,233,0.1)] animate-[spin_40s_linear_infinite]" style={{ transform: 'rotateX(75deg)' }} />
-          <div className="absolute w-[100%] h-[80%] rounded-[100%] border border-purple-500/20 shadow-[0_0_80px_rgba(168,85,247,0.1)] animate-[spin_30s_linear_infinite_reverse]" style={{ transform: 'rotateX(75deg)' }} />
+        {/* ── 3D Tech Grid Background (Replacing Ovals) ── */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-40 mix-blend-screen pointer-events-none">
+          <div className="w-[1000px] h-[1000px] absolute animate-[spin_60s_linear_infinite]" style={{
+            backgroundImage: `
+              linear-gradient(rgba(14,165,233,0.2) 1px, transparent 1px), 
+              linear-gradient(90deg, rgba(14,165,233,0.2) 1px, transparent 1px)
+            `,
+            backgroundSize: '50px 50px',
+            transform: 'perspective(1000px) rotateX(65deg) scale(1.5)',
+            maskImage: 'radial-gradient(circle at center, black 10%, transparent 60%)',
+            WebkitMaskImage: 'radial-gradient(circle at center, black 10%, transparent 60%)'
+          }} />
+          
+          {/* Inner floating boxes */}
+          <div className="absolute w-[300px] h-[300px] border-[2px] border-purple-500/20 rounded-3xl animate-[spin_20s_linear_infinite_reverse]" style={{ transform: 'perspective(1000px) rotateX(65deg)' }} />
+          <div className="absolute w-[450px] h-[450px] border-[1px] border-primary-500/20 rounded-full animate-[spin_30s_linear_infinite]" style={{ transform: 'perspective(1000px) rotateX(65deg)' }} />
         </div>
 
         {/* Central Root Node */}

@@ -1,4 +1,4 @@
-import { Activity, GitBranch, Target, Zap, ServerCrash } from 'lucide-react';
+import { Activity, GitBranch, Target, Zap, ServerCrash, Cpu } from 'lucide-react';
 
 export function BentoGrid() {
   return (
@@ -16,7 +16,7 @@ export function BentoGrid() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
         
         {/* ── Widget 1: Live State ── */}
-        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col justify-between min-h-[360px]">
+        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col justify-between min-h-[360px] animate-fade-up" style={{ animationDelay: '100ms' }}>
           {/* Subtle Hover Gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary-500/0 md:group-hover:from-primary-500/5 to-transparent transition-colors duration-500" />
           
@@ -42,7 +42,7 @@ export function BentoGrid() {
         </div>
 
         {/* ── Widget 2: Pathfinder (Spans 2 columns on lg) ── */}
-        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col justify-between min-h-[360px] lg:col-span-2">
+        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col justify-between min-h-[360px] lg:col-span-2 animate-fade-up" style={{ animationDelay: '200ms' }}>
           {/* Subtle Hover Gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 md:group-hover:from-purple-500/5 to-transparent transition-colors duration-500" />
           
@@ -81,8 +81,42 @@ export function BentoGrid() {
           </div>
         </div>
 
+        {/* ── Widget 4: Generative Remediation ── */}
+        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col justify-between min-h-[360px] lg:col-span-2 animate-fade-up" style={{ animationDelay: '300ms' }}>
+          {/* Subtle Hover Gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 md:group-hover:from-blue-500/5 to-transparent transition-colors duration-500" />
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+            <div>
+              <div className="flex items-center gap-4 mb-5">
+                <div className="w-12 h-12 rounded-2xl bg-surface-2 border border-white/10 flex items-center justify-center shadow-lg group-hover:bg-blue-500/10 group-hover:border-blue-500/30 transition-all">
+                  <Cpu className="w-6 h-6 text-blue-400 group-hover:animate-pulse" />
+                </div>
+                <h3 className="text-lg font-bold text-white tracking-wide">Generative Remediation</h3>
+              </div>
+              <p className="text-gray-400 text-sm leading-relaxed max-w-sm">When evaluations fail, the Curator agent instantly spins up a temporary bridge node tailored strictly to patch your specific knowledge gap.</p>
+            </div>
+          </div>
+          
+          <div className="relative z-10 w-full bg-[#080c12] border border-white/10 rounded-xl p-5 shadow-inner overflow-hidden font-mono text-[13px] leading-loose group-hover:border-blue-500/30 transition-colors">
+            <div className="flex items-center gap-2 mb-2">
+               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+               <span className="text-red-400 text-xs font-semibold uppercase tracking-wider">Evaluation Failed: Matrix Math</span>
+            </div>
+            <div className="h-px w-full bg-white/5 my-3" />
+            <div className="flex items-center gap-2">
+               <Zap className="w-4 h-4 text-blue-400 fill-blue-400" />
+               <span className="text-blue-200">Injecting temporary content node...</span>
+            </div>
+            <pre className="text-gray-300 mt-2">
+              <span className="text-purple-400">"bridge_id"</span>: <span className="text-green-400">"n_2491a"</span>,<br/>
+              <span className="text-purple-400">"type"</span>: <span className="text-yellow-200">"Curator Material"</span>
+            </pre>
+          </div>
+        </div>
+
         {/* ── Widget 3: Mastery Pulse ── */}
-        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col md:flex-row lg:flex-col items-center justify-between min-h-[360px] lg:col-span-1 md:col-span-2">
+        <div className="tilt-card glass-panel group relative overflow-hidden p-8 flex flex-col md:flex-row lg:flex-col items-center justify-between min-h-[360px] lg:col-span-1 md:col-span-2 animate-fade-up" style={{ animationDelay: '400ms' }}>
           {/* Subtle Hover Gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-green-500/0 md:group-hover:from-green-500/5 to-transparent transition-colors duration-500" />
           

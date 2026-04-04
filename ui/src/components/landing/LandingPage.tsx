@@ -12,8 +12,8 @@ export function LandingPage({ onGetStarted }: LandingPageProps) {
     <div className="flex flex-col w-full min-h-screen relative z-10 w-full overflow-y-auto">
       <LandingHero onGetStarted={onGetStarted} />
       <BentoGrid />
-      <FeatureShowcase />
       <HowItWorks />
+      <FeatureShowcase />
       
       {/* ── Footer ── */}
       <footer className="w-full py-12 border-t border-white/5 mt-12 bg-background/50 backdrop-blur-md z-20">
