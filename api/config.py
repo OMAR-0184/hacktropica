@@ -39,6 +39,15 @@ class APISettings(BaseSettings):
     hf_name_detection_timeout_seconds: float = 0.8
     hf_person_entity_threshold: float = 0.9
 
+    # Journey orchestrator rollout controls
+    journey_orchestrator_v2_enabled: bool = False
+    journey_orchestrator_v2_allowlist_user_ids: str = ""
+    journey_orchestrator_v2_rollout_percent: int = 0
+
+    # Concurrency/idempotency protection for continue/advance APIs
+    journey_orchestrator_lock_ttl_seconds: int = 15
+    journey_orchestrator_idempotency_ttl_seconds: int = 300
+
 
 @lru_cache(maxsize=1)
 def get_api_settings() -> APISettings:
