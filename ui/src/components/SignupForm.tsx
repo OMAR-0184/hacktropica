@@ -104,17 +104,23 @@ export function SignupForm() {
         throw new Error(data?.detail || 'Could not create account. This email may already be in use.');
       }
 
-      const data = await res.json();
-      const token = data.access_token || data.token;
-      if (token) {
-        localStorage.setItem('hacktropica_token', token);
-        setSuccess(true);
-        setTimeout(() => { window.location.href = '/dashboard'; }, 700);
-      } else {
-        setSuccess(true);
-        // No token → prompt them to log in
-        setTimeout(() => { window.location.reload(); }, 1200);
+      // Automatically log the user in to get the JWT
+      const loginRes = await fetch('/auth/login/json', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email: email.trim(), password }),
+      });
+
+      if (loginRes.ok) {
+        const loginData = await loginRes.json();
+        const token = loginData.access_token || loginData.token;
+        if (token) {
+          localStorage.setItem('hacktropica_token', token);
+        }
       }
+
+      setSuccess(true);
+      setTimeout(() => { window.location.href = '/dashboard'; }, 700);
     } catch (err: any) {
       setGlobalError(err.message || 'An unexpected error occurred.');
     } finally {
