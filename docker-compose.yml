@@ -1,0 +1,54 @@
+services:
+  cognimap-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: cognimap_admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: cognimap
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  cognimap-redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  cognimap-api:
+    build: .
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      - COGNIMAP_DATABASE_URL=postgresql+asyncpg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
+      - COGNIMAP_DATABASE_URL_SYNC=postgresql+psycopg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
+      - COGNIMAP_REDIS_URL=redis://cognimap-redis:6379/0
+    depends_on:
+      - cognimap-db
+      - cognimap-redis
+    restart: unless-stopped
+
+  cognimap-worker:
+    build: .
+    command: ["arq", "api.engine.worker.WorkerSettings"]
+    env_file:
+      - .env
+    environment:
+      - COGNIMAP_DATABASE_URL=postgresql+asyncpg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
+      - COGNIMAP_DATABASE_URL_SYNC=postgresql+psycopg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
+      - COGNIMAP_REDIS_URL=redis://cognimap-redis:6379/0
+    depends_on:
+      - cognimap-db
+      - cognimap-redis
+      - cognimap-api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

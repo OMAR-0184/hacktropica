@@ -22,8 +22,9 @@ class APISettings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
 
+    # Override this in environment variables for production deployments.
     secret_key: str = "change-me-in-production"
-    jwt_algorithm: str = "something"
+    jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     cors_origins: list[str] = ["*"]
@@ -37,3 +38,8 @@ class APISettings(BaseSettings):
     hf_name_detection_model: str = "dslim/bert-base-NER"
     hf_name_detection_timeout_seconds: float = 0.8
     hf_person_entity_threshold: float = 0.9
+
+
+@lru_cache(maxsize=1)
+def get_api_settings() -> APISettings:
+    return APISettings()
