@@ -93,7 +93,7 @@ async def quiz_node(state: CognimapState) -> dict[str, Any]:
     lesson_summary = _build_lesson_context(lesson.get("tutor_content", {}))
 
     quiz = await invoke_llm_json(
-        node_type="evaluator",  # Re-use evaluator LLM config
+        node_type="quiz",
         temperature=0.1,
         messages=[
             {
