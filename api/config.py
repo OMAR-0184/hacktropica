@@ -40,7 +40,8 @@ class APISettings(BaseSettings):
     # Override this in environment variables for production deployments.
     secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 7
 
     cors_origins: list[str] = ["*"]
 

@@ -17,8 +17,11 @@ from api.database.models import User
 from api.engine.auth_utils import (
     verify_password,
     create_access_token,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_refresh_token,
 )
+from api.config import get_api_settings
+
+_settings = get_api_settings()
 
 # ── Username constraints ──────────────────────────────────────
 
@@ -93,8 +96,19 @@ async def authenticate_and_create_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    access_token_expires = timedelta(minutes=_settings.access_token_expire_minutes)
+    refresh_token_expires = timedelta(days=_settings.refresh_token_expire_days)
+    
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    refresh_token = create_refresh_token(
+        data={"sub": user.email}, expires_delta=refresh_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer"
+    }
