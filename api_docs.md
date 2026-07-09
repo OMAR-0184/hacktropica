@@ -40,8 +40,9 @@ Content-Type: application/json
 
 Token source:
 
-- `POST /auth/login/json` (recommended for SPAs)
+- `POST /auth/login/json` (recommended for SPAs, returns access and refresh tokens)
 - `POST /auth/login` (form-data, mainly Swagger/OAuth tooling)
+- `POST /auth/refresh` (to exchange refresh tokens for new access tokens)
 
 WebSocket auth is different:
 
@@ -200,6 +201,7 @@ Success `200`:
 ```json
 {
   "access_token": "<jwt>",
+  "refresh_token": "<jwt>",
   "token_type": "bearer"
 }
 ```
@@ -214,6 +216,32 @@ Same auth behavior as `/auth/login/json`, but uses form fields:
 
 - `username` (email)
 - `password`
+
+### `POST /auth/refresh`
+
+Exchanges a valid refresh token for a new access token.
+
+Request:
+
+```json
+{
+  "refresh_token": "<jwt>"
+}
+```
+
+Success `200`:
+
+```json
+{
+  "access_token": "<new_jwt>",
+  "refresh_token": "<same_jwt>",
+  "token_type": "bearer"
+}
+```
+
+Errors:
+
+- `401` invalid or expired refresh token
 
 ### `GET /auth/profile`
 
