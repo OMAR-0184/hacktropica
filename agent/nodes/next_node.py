@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.nodes._tree import find_bridge_parent
 from agent.state import CognimapState
 
 _HISTORY_LIMIT = 300
@@ -41,7 +42,9 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
     previous_node = navigation_stack[-2] if len(navigation_stack) >= 2 else None
 
     # Passing a remediation node should also master its parent subtopic.
-    parent_subtopic = _find_bridge_parent(history, current) if current not in subtopics else None
+    parent_subtopic = (
+        find_bridge_parent(history, current) if current not in subtopics else None
+    )
     mastery[current] = True
     if parent_subtopic:
         mastery[parent_subtopic] = True
@@ -55,7 +58,11 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         parent_meta["status"] = "mastered"
         graph_nodes[parent_subtopic] = parent_meta
 
-    active_frontier = [node for node in active_frontier if node != current and not mastery.get(node, False)]
+    active_frontier = [
+        node
+        for node in active_frontier
+        if node != current and not mastery.get(node, False)
+    ]
     remaining = [st for st in subtopics if not mastery.get(st, False) and st != current]
     for node in remaining:
         if node not in active_frontier:
@@ -67,7 +74,9 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
     elif selected and selected in subtopics and selected != current:
         next_subtopic = selected
     elif active_frontier:
-        next_subtopic = active_frontier[0] if traversal_mode == "bfs" else active_frontier[-1]
+        next_subtopic = (
+            active_frontier[0] if traversal_mode == "bfs" else active_frontier[-1]
+        )
     else:
         next_subtopic = current
 
@@ -85,7 +94,11 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         if not navigation_stack or navigation_stack[-1] != next_subtopic:
             navigation_stack.append(next_subtopic)
 
-    available_choices = [st for st in active_frontier if st != next_subtopic and not mastery.get(st, False)]
+    available_choices = [
+        st
+        for st in active_frontier
+        if st != next_subtopic and not mastery.get(st, False)
+    ]
 
     current_meta = node_catalog.get(next_subtopic, {})
     current_path = current_meta.get("path_from_root", [next_subtopic])
@@ -102,13 +115,15 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
             graph_nodes[st] = meta
 
     if next_subtopic != current:
-        history.append({
-            "type": "transition",
-            "from_node": current,
-            "to_node": next_subtopic,
-            "journey_mode": journey_mode,
-            "backtrack": is_backtrack,
-        })
+        history.append(
+            {
+                "type": "transition",
+                "from_node": current,
+                "to_node": next_subtopic,
+                "journey_mode": journey_mode,
+                "backtrack": is_backtrack,
+            }
+        )
     history = history[-_HISTORY_LIMIT:]
 
     return {
@@ -128,11 +143,3 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         "lesson": {},
         "evaluation": {},
     }
-
-
-def _find_bridge_parent(history: list[dict], bridge_topic: str) -> str | None:
-    """Walk history backwards to find the parent_subtopic for a bridge topic."""
-    for entry in reversed(history):
-        if entry.get("type") == "bridge" and entry.get("bridge_topic") == bridge_topic:
-            return entry.get("parent_subtopic")
-    return None

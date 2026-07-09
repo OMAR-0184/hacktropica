@@ -8,7 +8,12 @@ from typing import Any
 
 from agent.config import get_settings
 from agent.nodes._mcq import determine_next_action, grade_mcq
-from agent.nodes._tree import build_node_meta, generate_child_blueprint, infer_math_heavy
+from agent.nodes._tree import (
+    build_node_meta,
+    generate_child_blueprint,
+    infer_math_heavy,
+    find_bridge_parent,
+)
 from agent.state import CognimapState
 
 _HISTORY_LIMIT = 300
@@ -48,9 +53,15 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
     quiz_meta = state.get("quiz", {})
     if not isinstance(quiz_meta, dict):
         quiz_meta = {}
-    evaluation["question_count"] = int(quiz_meta.get("question_count", len(quiz_questions)))
-    evaluation["numerical_target_ratio"] = float(quiz_meta.get("numerical_target_ratio", 0.0))
-    evaluation["actual_numerical_ratio"] = float(quiz_meta.get("actual_numerical_ratio", 0.0))
+    evaluation["question_count"] = int(
+        quiz_meta.get("question_count", len(quiz_questions))
+    )
+    evaluation["numerical_target_ratio"] = float(
+        quiz_meta.get("numerical_target_ratio", 0.0)
+    )
+    evaluation["actual_numerical_ratio"] = float(
+        quiz_meta.get("actual_numerical_ratio", 0.0)
+    )
 
     score = float(evaluation.get("score", 0.0))
     passed = bool(evaluation.get("passed", False))
@@ -111,7 +122,9 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
     )
     evaluation["next_action"] = next_action
     completed = next_action == "completed"
-    parent_subtopic = _find_bridge_parent(history, current) if current not in subtopics else None
+    parent_subtopic = (
+        find_bridge_parent(history, current) if current not in subtopics else None
+    )
 
     if current in graph_nodes:
         node_meta = dict(graph_nodes[current])
@@ -141,16 +154,18 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
             available_choices.append(node)
 
     history = list(state.get("history", []))
-    history.append({
-        "type": "review_evaluation" if journey_mode == "review" else "evaluation",
-        "subtopic": current,
-        "score": score,
-        "feedback": evaluation.get("feedback", ""),
-        "weak_areas": weak,
-        "passed": passed,
-        "next_action": evaluation.get("next_action", "next_topic"),
-        "journey_mode": journey_mode,
-    })
+    history.append(
+        {
+            "type": "review_evaluation" if journey_mode == "review" else "evaluation",
+            "subtopic": current,
+            "score": score,
+            "feedback": evaluation.get("feedback", ""),
+            "weak_areas": weak,
+            "passed": passed,
+            "next_action": evaluation.get("next_action", "next_topic"),
+            "journey_mode": journey_mode,
+        }
+    )
     history = history[-_HISTORY_LIMIT:]
 
     return {
@@ -183,7 +198,15 @@ async def _expand_curriculum_on_pass(
     active_frontier: list[str],
     mastery: dict[str, bool],
     weak_areas: list[str],
-) -> tuple[list[str], dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[str], list[str]]:
+) -> tuple[
+    list[str],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    list[str],
+    list[str],
+]:
     settings = get_settings()
     topic = str(state.get("topic", "") or "")
     course_mode = str(state.get("course_mode", "detailed") or "detailed")
@@ -303,10 +326,3 @@ async def _expand_curriculum_on_pass(
         expanded_nodes,
         active_frontier,
     )
-
-
-def _find_bridge_parent(history: list[dict[str, Any]], bridge_topic: str) -> str | None:
-    for entry in reversed(history):
-        if entry.get("type") == "bridge" and entry.get("bridge_topic") == bridge_topic:
-            return entry.get("parent_subtopic")
-    return None

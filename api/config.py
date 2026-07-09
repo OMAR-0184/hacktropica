@@ -10,7 +10,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class APISettings(BaseSettings):
-
     model_config = {
         "env_prefix": "COGNIMAP_",
         "env_file": str(BASE_DIR / ".env"),
@@ -18,12 +17,25 @@ class APISettings(BaseSettings):
         "extra": "ignore",
     }
 
-    database_url: str = "postgresql+asyncpg://cognimap_admin:secretpassword@localhost:5432/cognimap"
-    database_url_sync: str = "postgresql://cognimap_admin:secretpassword@localhost:5432/cognimap"
+    database_url: str = (
+        "postgresql+asyncpg://cognimap_admin:secretpassword@localhost:5432/cognimap"
+    )
+    database_url_sync: str = (
+        "postgresql://cognimap_admin:secretpassword@localhost:5432/cognimap"
+    )
 
     redis_url: str = "redis://localhost:6379/0"
 
     environment: str = "development"
+
+    # ── Database connection pool ──────────────────────────────
+    db_pool_size: int = 20
+    db_max_overflow: int = 30
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 1800
+
+    # ── Redis connection pool ─────────────────────────────────
+    redis_max_connections: int = 50
 
     # Override this in environment variables for production deployments.
     secret_key: str = "change-me-in-production"
@@ -31,6 +43,12 @@ class APISettings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
     cors_origins: list[str] = ["*"]
+
+    # ── Rate limiting ─────────────────────────────────────────
+    rate_limit_requests_per_minute: int = 30
+
+    # ── Session limits ────────────────────────────────────────
+    max_active_sessions_per_user: int = 5
 
     huggingface_api_token: str = ""
     use_hf_moderation: bool = True
@@ -68,11 +86,17 @@ class APISettings(BaseSettings):
             issues.append("COGNIMAP_CORS_ORIGINS cannot contain '*' in production")
 
         if _is_local_url(self.database_url):
-            issues.append("COGNIMAP_DATABASE_URL must not point to localhost in production")
+            issues.append(
+                "COGNIMAP_DATABASE_URL must not point to localhost in production"
+            )
         if _is_local_url(self.database_url_sync):
-            issues.append("COGNIMAP_DATABASE_URL_SYNC must not point to localhost in production")
+            issues.append(
+                "COGNIMAP_DATABASE_URL_SYNC must not point to localhost in production"
+            )
         if _is_local_url(self.redis_url):
-            issues.append("COGNIMAP_REDIS_URL must not point to localhost in production")
+            issues.append(
+                "COGNIMAP_REDIS_URL must not point to localhost in production"
+            )
 
         if issues:
             raise RuntimeError("Invalid production configuration: " + "; ".join(issues))

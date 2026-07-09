@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, JSON
+from sqlalchemy import Column, ForeignKey, Index, Integer, String, DateTime, Float, JSON
 from sqlalchemy.orm import relationship
 
 from api.database.core import Base
@@ -24,14 +24,17 @@ class User(Base):
 
 class Session(Base):
     __tablename__ = "sessions"
+    __table_args__ = (
+        Index("ix_sessions_user_status", "user_id", "status"),
+    )
 
-    id = Column(String, primary_key=True, index=True)  
+    id = Column(String, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     topic = Column(String, index=True)
-    status = Column(String, default="initializing")  
+    status = Column(String, default="initializing")
     error_message = Column(String, nullable=True)
-    current_phase = Column(String, default="root")  
-    course_mode = Column(String, default="detailed") 
+    current_phase = Column(String, default="root")
+    course_mode = Column(String, default="detailed")
     langgraph_thread_id = Column(String, unique=True, index=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
@@ -42,13 +45,17 @@ class Session(Base):
 
 class NodeState(Base):
     __tablename__ = "nodes"
+    __table_args__ = (
+        Index("ix_nodes_session_node", "session_id", "node_id"),
+        Index("ix_nodes_score", "score"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String, ForeignKey("sessions.id"))
-    node_id = Column(String)  
-    node_type = Column(String)  
-    status = Column(String)  
-    content = Column(JSON, nullable=True)  
+    node_id = Column(String)
+    node_type = Column(String)
+    status = Column(String)
+    content = Column(JSON, nullable=True)
     score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=utc_now)
 

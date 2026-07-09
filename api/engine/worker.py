@@ -6,14 +6,31 @@ Run via: arq api.engine.worker.WorkerSettings
 """
 
 import logging
-from arq import Worker
 from arq.connections import RedisSettings
 
 from api.config import get_api_settings
-from api.engine.runner import run_learning_graph, resume_graph_stream, advance_graph_stream
+from api.engine.runner import (
+    runtime,
+    run_learning_graph,
+    resume_graph_stream,
+    advance_graph_stream,
+)
 
 logger = logging.getLogger(__name__)
 _settings = get_api_settings()
+
+
+async def startup(ctx: dict) -> None:
+    """Initialize the GraphRuntime once per worker process."""
+    logger.info("ARQ worker starting — initializing GraphRuntime…")
+    await runtime.start()
+    ctx["runtime_started"] = True
+
+
+async def shutdown(ctx: dict) -> None:
+    """Clean up the GraphRuntime on worker shutdown."""
+    logger.info("ARQ worker shutting down — closing GraphRuntime…")
+    await runtime.stop()
 
 
 async def start_learning_task(
@@ -23,14 +40,9 @@ async def start_learning_task(
     course_mode: str = "detailed",
     *args,
 ):
-    """ARQ task to initialize the learning graph and begin streaming."""
     traversal_mode = "dfs"
     learner_profile = ""
     journey_orchestrator_v2 = False
-
-    # Backward/forward compatible argument parsing:
-    # old payload: [learner_profile, journey_orchestrator_v2]
-    # new payload: [traversal_mode, learner_profile, journey_orchestrator_v2]
     if len(args) == 2:
         learner_profile = str(args[0] or "")
         journey_orchestrator_v2 = bool(args[1])
@@ -69,10 +81,13 @@ class WorkerSettings:
         resume_learning_task,
         advance_learning_task,
     ]
-    
-    # Parse the standard redis://host:port/... URL into RedisSettings
+
+    on_startup = startup
+    on_shutdown = shutdown
+
     redis_settings = RedisSettings.from_dsn(_settings.redis_url)
 
-    # Optional: You can do connection pooling for the DB here,
-    # but SQLAlchemy via create_async_engine handles its own pool 
-    # cleanly out of the box so long as we are in a single event loop!
+    # ── Scaling & reliability settings ────────────────────────
+    max_jobs = 10                  # Concurrent jobs per worker process
+    job_timeout = 120              # Kill stalled LLM calls after 2 min
+    health_check_interval = 30     # Heartbeat interval for monitoring

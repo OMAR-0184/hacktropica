@@ -55,14 +55,18 @@ def build_node_meta(
         "node_id": node_id,
         "parent_node_id": parent_node_id,
         "depth": int(depth),
-        "node_kind": node_kind if node_kind in {"intro", "concept", "advanced", "remediation"} else "concept",
+        "node_kind": node_kind
+        if node_kind in {"intro", "concept", "advanced", "remediation"}
+        else "concept",
         "path_from_root": path,
         "is_math_heavy": bool(is_math_heavy),
         "is_expanded": bool(is_expanded),
     }
 
 
-def determine_quiz_profile(node_meta: dict[str, Any] | None, node_id: str) -> tuple[int, float]:
+def determine_quiz_profile(
+    node_meta: dict[str, Any] | None, node_id: str
+) -> tuple[int, float]:
     meta = node_meta or {}
     node_kind = str(meta.get("node_kind", "") or "").lower()
     math_heavy = bool(meta.get("is_math_heavy", False))
@@ -168,7 +172,9 @@ async def generate_child_blueprint(
         normalized.append(
             {
                 "title": title,
-                "is_math_heavy": bool(child.get("is_math_heavy", infer_math_heavy(title))),
+                "is_math_heavy": bool(
+                    child.get("is_math_heavy", infer_math_heavy(title))
+                ),
                 "node_kind": str(child.get("node_kind", "concept")),
             }
         )
@@ -189,11 +195,21 @@ async def generate_child_blueprint(
             normalized.append(
                 {
                     "title": candidate,
-                    "is_math_heavy": infer_math_heavy(candidate) or infer_math_heavy(topic),
-                    "node_kind": "advanced" if "advanced" in candidate.lower() else "concept",
+                    "is_math_heavy": infer_math_heavy(candidate)
+                    or infer_math_heavy(topic),
+                    "node_kind": "advanced"
+                    if "advanced" in candidate.lower()
+                    else "concept",
                 }
             )
             if len(normalized) >= min_children:
                 break
 
     return normalized[:max_children]
+
+
+def find_bridge_parent(history: list[dict[str, Any]], bridge_topic: str) -> str | None:
+    for entry in reversed(history):
+        if entry.get("type") == "bridge" and entry.get("bridge_topic") == bridge_topic:
+            return entry.get("parent_subtopic")
+    return None

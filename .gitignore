@@ -1,1 +1,7 @@
 .env
+.pytest_cache
+.ruff_cache
+.venv
+cognimap_architecture.tex
+ui/
+.DS_Store

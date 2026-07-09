@@ -4,12 +4,14 @@ from typing import List, Dict, Any, Optional, Literal
 
 # ── Auth (JSON login) ────────────────────────────────────────
 
+
 class LoginRequest(BaseModel):
     email: str
     password: str
 
 
 # ── Learning Requests ─────────────────────────────────────────
+
 
 class LearningRequest(BaseModel):
     topic: str
@@ -71,6 +73,7 @@ class NodeHierarchyMeta(BaseModel):
 
 # ── Tutor / Curator typed content ─────────────────────────────
 
+
 class TutorContent(BaseModel):
     learning_objective: str = ""
     explanation: str = ""
@@ -94,6 +97,7 @@ class CuratorContent(BaseModel):
 
 
 # ── Responses ─────────────────────────────────────────────────
+
 
 class StartResponse(BaseModel):
     session_id: str
@@ -201,12 +205,20 @@ class QuestionResult(BaseModel):
 
 class EvaluationResult(BaseModel):
     """Structured evaluation result returned by GET /evaluation."""
+
     score: float = Field(..., description="Float between 0 and 1 representing mastery")
     weak_areas: List[str] = Field(..., description="Concepts the user struggled with")
-    feedback: str = Field(..., description="Qualitative feedback explaining to the user why they received their score.")
+    feedback: str = Field(
+        ...,
+        description="Qualitative feedback explaining to the user why they received their score.",
+    )
     passed: bool = Field(..., description="True if score >= mastery_threshold")
-    next_action: str = Field(..., description="'next_topic' or 'remediation' | 'completed' | 'pending'")
-    question_results: List[QuestionResult] = Field(default_factory=list, description="Per-question deterministic grading details.")
+    next_action: str = Field(
+        ..., description="'next_topic' or 'remediation' | 'completed' | 'pending'"
+    )
+    question_results: List[QuestionResult] = Field(
+        default_factory=list, description="Per-question deterministic grading details."
+    )
     question_count: int = 0
     numerical_target_ratio: float = 0.0
     actual_numerical_ratio: float = 0.0
@@ -252,6 +264,7 @@ class WorkflowSnapshotResponse(BaseModel):
     traversal_mode: Literal["bfs", "dfs"] = "dfs"
     waiting_on: List[str] = []
     next_action: Optional[str] = None
+    orchestrator_reasoning: Optional[str] = None
     options: List[str] = []
     recommended_node: Optional[str] = None
     recommendation_reason: Optional[str] = None
@@ -304,6 +317,7 @@ class SessionListResponse(BaseModel):
 
 
 # ── Search ────────────────────────────────────────────────────
+
 
 class SearchResult(BaseModel):
     title: str = ""

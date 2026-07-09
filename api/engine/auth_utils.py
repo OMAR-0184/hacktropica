@@ -13,11 +13,17 @@ ACCESS_TOKEN_EXPIRE_MINUTES = _settings.access_token_expire_minutes
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     import bcrypt
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+    )
+
 
 def get_password_hash(password: str) -> str:
     import bcrypt
-    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()

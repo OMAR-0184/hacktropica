@@ -1,27 +1,37 @@
+"""
+WebSocket connection manager backed by Redis pub/sub.
+
+Uses the shared Redis connection pool instead of creating its own.
+"""
+
 import json
 import asyncio
 from typing import Dict, List
 from fastapi import WebSocket
-from redis.asyncio import Redis
 
-from api.config import get_api_settings
-
-_settings = get_api_settings()
+from api.redis import get_redis
 
 
 class ConnectionManager:
     def __init__(self):
         # Maps session_id to a list of active WebSockets
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        self.redis = Redis.from_url(_settings.redis_url)
-        self.pubsub = self.redis.pubsub()
+        self._redis = None
+        self._pubsub = None
         self.pubsub_task = None
+
+    def _get_redis(self):
+        if self._redis is None:
+            self._redis = get_redis()
+            self._pubsub = self._redis.pubsub()
+        return self._redis
 
     async def connect(self, websocket: WebSocket, session_id: str):
         await websocket.accept()
+        self._get_redis()  # Ensure Redis is initialized
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
-            await self.pubsub.subscribe(f"session:{session_id}")
+            await self._pubsub.subscribe(f"session:{session_id}")
             if self.pubsub_task is None:
                 self.pubsub_task = asyncio.create_task(self._listen_to_redis())
         self.active_connections[session_id].append(websocket)
@@ -32,10 +42,11 @@ class ConnectionManager:
                 self.active_connections[session_id].remove(websocket)
             if not self.active_connections[session_id]:
                 del self.active_connections[session_id]
-                await self.pubsub.unsubscribe(f"session:{session_id}")
+                if self._pubsub is not None:
+                    await self._pubsub.unsubscribe(f"session:{session_id}")
 
     async def _listen_to_redis(self):
-        async for message in self.pubsub.listen():
+        async for message in self._pubsub.listen():
             if message["type"] == "message":
                 channel = message["channel"].decode()
                 data = message["data"].decode()
@@ -57,8 +68,9 @@ class ConnectionManager:
         """
         Publish state update to Redis so any node hosting the socket can broadcast it.
         """
+        redis = get_redis()
         payload = json.dumps(message)
-        await self.redis.publish(f"session:{session_id}", payload)
+        await redis.publish(f"session:{session_id}", payload)
 
 
 manager = ConnectionManager()

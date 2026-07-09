@@ -106,7 +106,4 @@ async def curator_node(state: CognimapState) -> dict[str, Any]:
         "courses_found": len(search_results.get("courses", [])),
     }
 
-    lesson = dict(state.get("lesson", {}))
-    lesson["curator_content"] = curator_content
-
-    return {"lesson": lesson}
+    return {"curator_content": curator_content}

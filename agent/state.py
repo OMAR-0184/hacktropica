@@ -1,10 +1,3 @@
-"""
-Central state schema for the Cognimap learning graph.
-
-Every node receives the full state and returns a partial dict
-of only the keys it wants to update (immutable-update pattern).
-"""
-
 from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
@@ -60,9 +53,14 @@ class CognimapState(TypedDict, total=False):
     mastery: dict[str, bool]
 
     lesson: dict[str, Any]
+    tutor_content: dict[str, Any]
+    curator_content: dict[str, Any]
 
     quiz: dict[str, Any]
 
     evaluation: dict[str, Any]
 
     remediation_count: int
+
+    orchestrator_reasoning: str
+    orchestrator_history: list[dict[str, Any]]

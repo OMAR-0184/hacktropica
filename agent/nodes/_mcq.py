@@ -7,6 +7,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from agent.nodes._tree import find_bridge_parent
+
 MCQ_COUNT = 6
 MCQ_OPTION_COUNT = 4
 _NUMERICAL_CUES = (
@@ -85,7 +87,9 @@ def build_fallback_questions(
             "concept": topic,
         },
     ]
-    numerical_required = int(round(expected_count * max(0.0, min(1.0, numerical_target_ratio))))
+    numerical_required = int(
+        round(expected_count * max(0.0, min(1.0, numerical_target_ratio)))
+    )
     if numerical_required > 0:
         for i in range(1, numerical_required + 1):
             base.append(
@@ -165,7 +169,9 @@ def normalize_mcq_questions(
             if correct_index < 0 or correct_index >= len(options):
                 correct_index = 0
 
-            concept = str(raw.get("concept") or raw.get("tag") or subtopic or "General").strip()
+            concept = str(
+                raw.get("concept") or raw.get("tag") or subtopic or "General"
+            ).strip()
             if not concept:
                 concept = subtopic or "General"
 
@@ -222,7 +228,9 @@ def is_numerical_question(question: Any) -> bool:
         return False
     prompt = str(question.get("question", "")).lower()
     options = question.get("options", [])
-    option_text = " ".join(str(o).lower() for o in options) if isinstance(options, list) else ""
+    option_text = (
+        " ".join(str(o).lower() for o in options) if isinstance(options, list) else ""
+    )
     blob = f"{prompt} {option_text}"
     if re.search(r"\d", blob):
         return True
@@ -247,7 +255,11 @@ def validate_mcq_submission(quiz_questions: Any, answers: Any) -> list[int]:
         if isinstance(answer, bool) or not isinstance(answer, int):
             raise ValueError(f"answers[{idx}] must be an integer option index.")
 
-        options = quiz_questions[idx].get("options", []) if isinstance(quiz_questions[idx], dict) else []
+        options = (
+            quiz_questions[idx].get("options", [])
+            if isinstance(quiz_questions[idx], dict)
+            else []
+        )
         option_count = len(options) if isinstance(options, list) else 0
         if option_count <= 0:
             raise ValueError(f"quiz question {idx + 1} has invalid options.")
@@ -277,7 +289,9 @@ def determine_next_action(
     # For graph-like traversal, completion means all curriculum subtopics are mastered.
     # If mastery map is unavailable, we fall back to legacy index-based behavior.
     if mastery:
-        remaining = [st for st in subtopics if not mastery.get(st, False) and st != current_node]
+        remaining = [
+            st for st in subtopics if not mastery.get(st, False) and st != current_node
+        ]
         if passed:
             return "next_topic" if remaining else "completed"
         if remediation_count < max_remediation:
@@ -383,7 +397,9 @@ def grade_mcq(
 def build_feedback(*, subtopic: str, score: float, weak_areas: list[str]) -> str:
     """Build deterministic user feedback from score bands and weak areas."""
     topic = subtopic or "this topic"
-    areas = ", ".join(weak_areas[:3]) if weak_areas else "core concepts from this lesson"
+    areas = (
+        ", ".join(weak_areas[:3]) if weak_areas else "core concepts from this lesson"
+    )
     next_step = f"Next steps: review {areas}, then retry a similar quiz."
     if score >= 0.95:
         return (
@@ -413,21 +429,16 @@ def _safe_int(value: Any, default: int) -> int:
         return default
 
 
-def _current_subtopic_index(current_node: str, subtopics: list[str], history: list[dict[str, Any]]) -> int:
+def _current_subtopic_index(
+    current_node: str, subtopics: list[str], history: list[dict[str, Any]]
+) -> int:
     if current_node in subtopics:
         return subtopics.index(current_node)
 
-    parent = _find_bridge_parent(history, current_node)
+    parent = find_bridge_parent(history, current_node)
     if parent and parent in subtopics:
         return subtopics.index(parent)
     return len(subtopics) - 1 if subtopics else 0
-
-
-def _find_bridge_parent(history: list[dict[str, Any]], bridge_topic: str) -> str | None:
-    for entry in reversed(history):
-        if entry.get("type") == "bridge" and entry.get("bridge_topic") == bridge_topic:
-            return entry.get("parent_subtopic")
-    return None
 
 
 def _ensure_numerical_ratio(
@@ -443,7 +454,9 @@ def _ensure_numerical_ratio(
     if required <= 0:
         return questions
 
-    numerical_indexes = [idx for idx, q in enumerate(questions) if is_numerical_question(q)]
+    numerical_indexes = [
+        idx for idx, q in enumerate(questions) if is_numerical_question(q)
+    ]
     if len(numerical_indexes) >= required:
         return questions
 
@@ -476,7 +489,9 @@ def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
         return True
     if _looks_like_gibberish(normalized_prompt):
         return True
-    if re.search(r"[\{\[\<]\s*(todo|tbd|insert)", normalized_prompt, flags=re.IGNORECASE):
+    if re.search(
+        r"[\{\[\<]\s*(todo|tbd|insert)", normalized_prompt, flags=re.IGNORECASE
+    ):
         return True
 
     lower_prompt = normalized_prompt.lower()
@@ -524,7 +539,9 @@ def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
 
 
 def _normalize_for_compare(text: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(text or "").lower())).strip()
+    return re.sub(
+        r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(text or "").lower())
+    ).strip()
 
 
 def _looks_like_gibberish(text: str) -> bool:

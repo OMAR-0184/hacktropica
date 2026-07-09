@@ -9,6 +9,7 @@ from typing import Any
 from agent.nodes._tree import build_node_meta, infer_math_heavy
 from agent.state import CognimapState
 
+
 async def root_node(state: CognimapState) -> dict[str, Any]:
     """Create canonical intro parent node and initialize traversal metadata."""
     topic = state["topic"]
