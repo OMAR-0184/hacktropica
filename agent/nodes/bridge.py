@@ -48,7 +48,9 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         },
     )
 
-    bridge_topic = str(bridge_data.get("bridge_topic", f"Remediation: {current}") or "").strip()
+    bridge_topic = str(
+        bridge_data.get("bridge_topic", f"Remediation: {current}") or ""
+    ).strip()
 
     graph_nodes = dict(state.get("graph_nodes", {}))
     node_catalog = dict(state.get("node_catalog", {}))
@@ -92,12 +94,14 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
     active_frontier = [node for node in active_frontier if node != bridge_topic]
 
     history = list(state.get("history", []))
-    history.append({
-        "type": "bridge",
-        "parent_subtopic": current,
-        "bridge_topic": bridge_topic,
-        "focus_areas": bridge_data.get("focus_areas", weak),
-    })
+    history.append(
+        {
+            "type": "bridge",
+            "parent_subtopic": current,
+            "bridge_topic": bridge_topic,
+            "focus_areas": bridge_data.get("focus_areas", weak),
+        }
+    )
     history = history[-_HISTORY_LIMIT:]
 
     remediation_count = state.get("remediation_count", 0) + 1
@@ -106,7 +110,9 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         navigation_stack.append(current)
     if navigation_stack[-1] != bridge_topic:
         navigation_stack.append(bridge_topic)
-    current_path = node_catalog.get(bridge_topic, {}).get("path_from_root", [bridge_topic])
+    current_path = node_catalog.get(bridge_topic, {}).get(
+        "path_from_root", [bridge_topic]
+    )
     if not isinstance(current_path, list) or not current_path:
         current_path = [bridge_topic]
 

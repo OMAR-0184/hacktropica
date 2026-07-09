@@ -20,7 +20,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         # Convert standard FastAPI HTTPException to our envelope
         detail = exc.detail
         if isinstance(detail, dict):
-            message = str(detail.get("message") or detail.get("code") or "Request failed.")
+            message = str(
+                detail.get("message") or detail.get("code") or "Request failed."
+            )
         else:
             message = str(detail)
         err = ErrorDetail(
@@ -28,7 +30,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             message=message,
             status=exc.status_code,
         )
-        return JSONResponse(status_code=exc.status_code, content=ErrorResponse(error=err).model_dump())
+        return JSONResponse(
+            status_code=exc.status_code, content=ErrorResponse(error=err).model_dump()
+        )
 
     if isinstance(exc, RequestValidationError):
         err = ErrorDetail(
@@ -36,7 +40,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             message="Request payload/query validation failed.",
             status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
-        return JSONResponse(status_code=422, content=ErrorResponse(error=err).model_dump())
+        return JSONResponse(
+            status_code=422, content=ErrorResponse(error=err).model_dump()
+        )
 
     if isinstance(exc, DBAPIError):
         # Database connectivity or execution issues
@@ -46,16 +52,20 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             message="A database error occurred. The service might be temporarily degraded.",
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-        return JSONResponse(status_code=503, content=ErrorResponse(error=err).model_dump())
+        return JSONResponse(
+            status_code=503, content=ErrorResponse(error=err).model_dump()
+        )
 
-    if isinstance(exc, ConnectionError): # Redis
+    if isinstance(exc, ConnectionError):  # Redis
         logger.error(f"Redis connection error on {request.url.path}: {exc}")
         err = ErrorDetail(
             code="CACHE_ERROR",
             message="A caching service error occurred. The service might be temporarily degraded.",
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-        return JSONResponse(status_code=503, content=ErrorResponse(error=err).model_dump())
+        return JSONResponse(
+            status_code=503, content=ErrorResponse(error=err).model_dump()
+        )
 
     # Unhandled server errors fallback
     logger.error(f"Unhandled exception on {request.url.path}: {traceback.format_exc()}")

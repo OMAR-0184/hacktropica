@@ -71,7 +71,9 @@ def main() -> None:
     )
     parser.add_argument("topic", help="The topic you want to learn")
     parser.add_argument(
-        "--json", dest="json_output", action="store_true",
+        "--json",
+        dest="json_output",
+        action="store_true",
         help="Output raw JSON (for frontend integration)",
     )
     args = parser.parse_args()
@@ -91,12 +93,18 @@ def main() -> None:
         _print_json(final_state)
     else:
         _print_rich(final_state)
-        sys.stderr.write(json.dumps({
-            "topic": final_state.get("topic", ""),
-            "subtopics": final_state.get("subtopics", []),
-            "scores": final_state.get("scores", {}),
-            "mastery": final_state.get("mastery", {}),
-        }, indent=2) + "\n")
+        sys.stderr.write(
+            json.dumps(
+                {
+                    "topic": final_state.get("topic", ""),
+                    "subtopics": final_state.get("subtopics", []),
+                    "scores": final_state.get("scores", {}),
+                    "mastery": final_state.get("mastery", {}),
+                },
+                indent=2,
+            )
+            + "\n"
+        )
 
 
 if __name__ == "__main__":

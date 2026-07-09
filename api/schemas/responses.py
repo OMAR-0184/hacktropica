@@ -1,4 +1,3 @@
-from typing import Any
 from pydantic import BaseModel
 
 
@@ -10,4 +9,5 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Standardized error envelope for the entire API."""
+
     error: ErrorDetail

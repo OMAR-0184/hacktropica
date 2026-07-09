@@ -9,6 +9,15 @@ services:
       - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cognimap_admin -d cognimap"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   cognimap-redis:
@@ -17,6 +26,12 @@ services:
       - "6381:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   cognimap-api:
@@ -29,9 +44,12 @@ services:
       - COGNIMAP_DATABASE_URL=postgresql+asyncpg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
       - COGNIMAP_DATABASE_URL_SYNC=postgresql+psycopg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
       - COGNIMAP_REDIS_URL=redis://cognimap-redis:6379/0
+      - WEB_WORKERS=4
     depends_on:
-      - cognimap-db
-      - cognimap-redis
+      cognimap-db:
+        condition: service_healthy
+      cognimap-redis:
+        condition: service_healthy
     restart: unless-stopped
 
   cognimap-worker:
@@ -44,9 +62,14 @@ services:
       - COGNIMAP_DATABASE_URL_SYNC=postgresql+psycopg://cognimap_admin:secretpassword@cognimap-db:5432/cognimap
       - COGNIMAP_REDIS_URL=redis://cognimap-redis:6379/0
     depends_on:
-      - cognimap-db
-      - cognimap-redis
-      - cognimap-api
+      cognimap-db:
+        condition: service_healthy
+      cognimap-redis:
+        condition: service_healthy
+      cognimap-api:
+        condition: service_started
+    deploy:
+      replicas: 3
     restart: unless-stopped
 
 volumes:

@@ -18,6 +18,7 @@ from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -35,12 +36,13 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("COGNIMAP_GOOGLE_API_KEY", "GOOGLE_API_KEY"),
     )
     tavily_api_key: str = ""
-    root_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    root_model: str = "gemini-2.5-flash"
     tutor_model: str = "gemini-2.5-flash"
     quiz_model: str = "gemini-2.5-flash"
-    curator_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    curator_model: str = "gemini-2.5-flash"
     evaluator_model: str = "gemini-2.5-flash"
-    bridge_model: str = "meta-llama/Meta-Llama-3-8B-Instruct"
+    bridge_model: str = "gemini-2.5-flash"
+    orchestrator_model: str = "gemini-2.5-flash"
 
     temperature: float = 0.4
 
@@ -79,6 +81,7 @@ def get_llm(node_type: str = "root", temperature: float | None = None) -> Any:
         "curator": s.curator_model,
         "evaluator": s.evaluator_model,
         "bridge": s.bridge_model,
+        "orchestrator": s.orchestrator_model,
     }
 
     model_name = model_map.get(node_type, s.root_model)
@@ -87,7 +90,10 @@ def get_llm(node_type: str = "root", temperature: float | None = None) -> Any:
 
     # Route Gemini models through Google provider.
     if model_name_normalized.startswith("gemini"):
-        api_key = str(s.google_api_key or "").strip() or str(os.getenv("GOOGLE_API_KEY", "")).strip()
+        api_key = (
+            str(s.google_api_key or "").strip()
+            or str(os.getenv("GOOGLE_API_KEY", "")).strip()
+        )
         if not api_key:
             raise RuntimeError(
                 f"GOOGLE_API_KEY is required for node_type='{node_type}' using model '{model_name}'."

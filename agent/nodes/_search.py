@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from tavily import AsyncTavilyClient
 
@@ -17,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 def _build_query(topic: str, subtopic: str, suffix: str = "") -> str:
     "Build a focused search query string."
-    base = f"{subtopic} {topic}" if topic and topic.lower() != subtopic.lower() else subtopic
+    base = (
+        f"{subtopic} {topic}"
+        if topic and topic.lower() != subtopic.lower()
+        else subtopic
+    )
     return f"{base} {suffix}".strip()
 
 
@@ -27,10 +30,12 @@ async def _tavily_search(query: str, max_results: int = 5) -> list[dict[str, str
     if not settings.tavily_api_key:
         logger.warning("No TAVILY_API_KEY found in settings.")
         return []
-    
+
     try:
         client = AsyncTavilyClient(api_key=settings.tavily_api_key)
-        response = await client.search(query=query, search_depth="basic", max_results=max_results)
+        response = await client.search(
+            query=query, search_depth="basic", max_results=max_results
+        )
         return [
             {
                 "title": r.get("title", ""),
@@ -75,9 +80,7 @@ async def search_courses(
     return await _tavily_search(query, n)
 
 
-async def search_all(
-    topic: str, subtopic: str
-) -> dict[str, list[dict[str, str]]]:
+async def search_all(topic: str, subtopic: str) -> dict[str, list[dict[str, str]]]:
     "Run all three searches concurrently and return combined results."
     articles, videos, courses = await asyncio.gather(
         search_articles(topic, subtopic),

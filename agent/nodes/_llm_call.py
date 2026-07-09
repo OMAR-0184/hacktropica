@@ -77,7 +77,11 @@ async def invoke_llm_json(
         try:
             llm = get_llm(node_type=node_type, temperature=temperature)
             response = await llm.ainvoke(messages)
-            raw = response.content.strip()
+            content = response.content
+            if isinstance(content, list):
+                raw = "".join(str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content).strip()
+            else:
+                raw = str(content).strip()
             last_raw = raw
 
             # Strip markdown fences
@@ -89,7 +93,9 @@ async def invoke_llm_json(
             if not isinstance(data, dict):
                 logger.warning(
                     "[%s] Attempt %d: LLM returned non-dict type %s, retrying...",
-                    node_type, attempt, type(data).__name__,
+                    node_type,
+                    attempt,
+                    type(data).__name__,
                 )
                 last_error = f"Expected dict, got {type(data).__name__}"
                 continue
@@ -99,21 +105,27 @@ async def invoke_llm_json(
             if missing and attempt < max_retries:
                 logger.warning(
                     "[%s] Attempt %d: Missing keys %s, retrying...",
-                    node_type, attempt, missing,
+                    node_type,
+                    attempt,
+                    missing,
                 )
                 last_error = f"Missing keys: {missing}"
                 continue
 
             # Fill any remaining gaps from defaults
             result = _validate_and_fill(data, required_keys, defaults)
-            logger.info("[%s] Successfully parsed LLM output on attempt %d", node_type, attempt)
+            logger.info(
+                "[%s] Successfully parsed LLM output on attempt %d", node_type, attempt
+            )
             return result
 
         except Exception as exc:
             last_error = str(exc)
             logger.error(
                 "[%s] Attempt %d failed with error: %s",
-                node_type, attempt, last_error,
+                node_type,
+                attempt,
+                last_error,
             )
             if attempt < max_retries:
                 await asyncio.sleep(retry_delay * attempt)  # Exponential backoff
@@ -121,6 +133,9 @@ async def invoke_llm_json(
     # All retries exhausted — return defaults
     logger.error(
         "[%s] All %d attempts failed. Last error: %s | Last raw output: %.500s",
-        node_type, max_retries, last_error, last_raw or "(none)",
+        node_type,
+        max_retries,
+        last_error,
+        last_raw or "(none)",
     )
     return dict(defaults)

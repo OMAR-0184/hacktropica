@@ -84,7 +84,13 @@ async def tutor_node(state: CognimapState) -> dict[str, Any]:
                 "content": user_prompt,
             },
         ],
-        required_keys=["learning_objective", "explanation", "examples", "common_misconception", "practice_task"],
+        required_keys=[
+            "learning_objective",
+            "explanation",
+            "examples",
+            "common_misconception",
+            "practice_task",
+        ],
         defaults=_DEFAULTS,
     )
 
@@ -101,14 +107,17 @@ async def tutor_node(state: CognimapState) -> dict[str, Any]:
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": retry_user_prompt},
             ],
-            required_keys=["learning_objective", "explanation", "examples", "common_misconception", "practice_task"],
+            required_keys=[
+                "learning_objective",
+                "explanation",
+                "examples",
+                "common_misconception",
+                "practice_task",
+            ],
             defaults=_DEFAULTS,
         )
 
-    lesson = dict(state.get("lesson", {}))
-    lesson["tutor_content"] = tutor_content
-
-    return {"lesson": lesson}
+    return {"tutor_content": tutor_content}
 
 
 def _needs_quality_retry(content: dict[str, Any], course_mode: str) -> bool:
@@ -119,7 +128,9 @@ def _needs_quality_retry(content: dict[str, Any], course_mode: str) -> bool:
 
     word_count = len(re.findall(r"\w+", explanation))
     lower = explanation.lower()
-    bad_phrase_hits = sum(lower.count(p) for p in ("tiny", "special path", "tiny atom", "tiny ball"))
+    bad_phrase_hits = sum(
+        lower.count(p) for p in ("tiny", "special path", "tiny atom", "tiny ball")
+    )
 
     if course_mode == "detailed":
         if word_count < 90:
