@@ -1,8 +1,3 @@
-"""
-Session lifecycle management.
-
-Handles creation, lookup, listing, archival, and WebSocket access checks.
-"""
 
 from __future__ import annotations
 
