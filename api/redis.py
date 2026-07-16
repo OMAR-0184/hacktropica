@@ -1,11 +1,3 @@
-"""
-Shared Redis connection pool — single pool for the entire process.
-
-Every module that needs Redis (concurrency, pub/sub, runner, websocket)
-should call ``get_redis()`` instead of creating its own connection.
-The pool is lazily initialized on first use and closed via
-``close_redis_pool()`` during application shutdown.
-"""
 
 from __future__ import annotations
 
@@ -29,12 +21,10 @@ def _ensure_pool() -> ConnectionPool:
 
 
 def get_redis() -> Redis:
-    """Return a Redis client backed by the shared connection pool."""
     return Redis(connection_pool=_ensure_pool())
 
 
 async def close_redis_pool() -> None:
-    """Drain the pool on application shutdown."""
     global _pool
     if _pool is not None:
         await _pool.aclose()

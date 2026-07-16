@@ -1,9 +1,4 @@
-"""
-arq Worker Configuration
 
-This module acts as the ARQ worker entry point.
-Run via: arq api.engine.worker.WorkerSettings
-"""
 
 import logging
 from arq.connections import RedisSettings
@@ -88,6 +83,6 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(_settings.redis_url)
 
     # ── Scaling & reliability settings ────────────────────────
-    max_jobs = 10                  # Concurrent jobs per worker process
-    job_timeout = 120              # Kill stalled LLM calls after 2 min
-    health_check_interval = 30     # Heartbeat interval for monitoring
+    max_jobs = 10                  
+    job_timeout = 600              
+    health_check_interval = 30     
