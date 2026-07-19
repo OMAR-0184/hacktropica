@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../config/theme.dart';
 import '../../models/workflow.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
+import '../../widgets/staggered_list.dart';
 
 class BranchView extends ConsumerStatefulWidget {
   final String sessionId;
@@ -55,27 +56,36 @@ class _BranchViewState extends ConsumerState<BranchView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Choose Your Path',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+              StaggeredFadeSlide(
+                index: 0,
+                child: const Text(
+                  'Choose Your Path',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'Select the next topic you want to explore.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
+              StaggeredFadeSlide(
+                index: 1,
+                child: const Text(
+                  'Select the next topic you want to explore.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textMuted,
+                  ),
                 ),
               ),
               const SizedBox(height: 32),
 
               // Options list
-              for (final opt in options) ...[
-                _buildOptionCard(opt),
+              for (int i = 0; i < options.length; i++) ...[
+                StaggeredFadeSlide(
+                  index: i + 2,
+                  child: _buildOptionCard(options[i]),
+                ),
                 const SizedBox(height: 16),
               ],
             ],
@@ -134,13 +144,12 @@ class _BranchViewState extends ConsumerState<BranchView> {
     final isSelected = _selectedNode == option;
     final isRecommended = option == widget.workflow.recommendedNode;
 
-    // We could extract metadata from optionMetadata if needed.
-    // For now, we'll keep it simple.
-
     return InkWell(
       onTap: _submitting ? null : () => setState(() => _selectedNode = option),
       borderRadius: BorderRadius.circular(16),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary500.withAlpha(20) : AppColors.surface2,
@@ -155,10 +164,14 @@ class _BranchViewState extends ConsumerState<BranchView> {
           children: [
             Row(
               children: [
-                Icon(
-                  isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                  color: isSelected ? AppColors.primary500 : AppColors.textMuted,
-                  size: 20,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                    key: ValueKey(isSelected),
+                    color: isSelected ? AppColors.primary500 : AppColors.textMuted,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

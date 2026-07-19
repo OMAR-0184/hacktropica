@@ -26,12 +26,15 @@ class ScoreIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Respect reduced-motion preference
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+
     return SizedBox(
       width: size,
       height: size,
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: score),
-        duration: const Duration(milliseconds: 800),
+        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 800),
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
           return CustomPaint(

@@ -10,6 +10,7 @@ import '../../viewmodels/lesson_viewmodel.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
 import '../../widgets/curator_resources.dart';
 import '../../widgets/error_banner.dart';
+import '../../widgets/staggered_list.dart';
 
 import '../../widgets/tutor_markdown.dart';
 import 'wait_view.dart';
@@ -43,6 +44,9 @@ class LessonView extends ConsumerWidget {
           return const Center(child: Text('No lesson content available.'));
         }
 
+        // Build content blocks with staggered indices
+        int staggerIndex = 0;
+
         return Stack(
           children: [
             SingleChildScrollView(
@@ -52,44 +56,56 @@ class LessonView extends ConsumerWidget {
                 children: [
                   // Objective
                   if (tutor.learningObjective.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.only(bottom: 24),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary500.withAlpha(20),
-                        border: Border(
-                          left: BorderSide(
-                              color: AppColors.primary500, width: 4),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary500.withAlpha(20),
+                          border: Border(
+                            left: BorderSide(
+                                color: AppColors.primary500, width: 4),
+                          ),
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(8),
+                            bottomRight: Radius.circular(8),
+                          ),
                         ),
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(8),
-                          bottomRight: Radius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        tutor.learningObjective,
-                        style: const TextStyle(
-                          color: AppColors.primary100,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
+                        child: Text(
+                          tutor.learningObjective,
+                          style: const TextStyle(
+                            color: AppColors.primary100,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
                       ),
                     ),
 
                   // Main Explanation
-                  TutorMarkdown(data: tutor.explanation),
+                  StaggeredFadeSlide(
+                    index: staggerIndex++,
+                    child: TutorMarkdown(data: tutor.explanation),
+                  ),
 
                   // Examples
                   if (tutor.examples.isNotEmpty) ...[
                     const SizedBox(height: 32),
-                    const Text('Examples',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Text('Examples',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
                     const SizedBox(height: 12),
                     for (final ex in tutor.examples) ...[
-                      TutorMarkdown(data: ex),
+                      StaggeredFadeSlide(
+                        index: staggerIndex++,
+                        child: TutorMarkdown(data: ex),
+                      ),
                       const SizedBox(height: 12),
                     ],
                   ],
@@ -98,38 +114,44 @@ class LessonView extends ConsumerWidget {
                   if (tutor.codeSnippet != null &&
                       tutor.codeSnippet!.isNotEmpty) ...[
                     const SizedBox(height: 24),
-                    TutorMarkdown(
-                        data: '```\n${tutor.codeSnippet!}\n```'),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: TutorMarkdown(
+                          data: '```\n${tutor.codeSnippet!}\n```'),
+                    ),
                   ],
 
                   // Common Misconception
                   if (tutor.commonMisconception.isNotEmpty) ...[
                     const SizedBox(height: 32),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withAlpha(15),
-                        borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: AppColors.warning.withAlpha(30)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.lightbulb_outline,
-                                  color: AppColors.warning, size: 18),
-                              SizedBox(width: 8),
-                              Text('Common Misconception',
-                                  style: TextStyle(
-                                      color: AppColors.warning,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          TutorMarkdown(data: tutor.commonMisconception),
-                        ],
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withAlpha(15),
+                          borderRadius: BorderRadius.circular(12),
+                          border:
+                              Border.all(color: AppColors.warning.withAlpha(30)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.lightbulb_outline,
+                                    color: AppColors.warning, size: 18),
+                                SizedBox(width: 8),
+                                Text('Common Misconception',
+                                    style: TextStyle(
+                                        color: AppColors.warning,
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            TutorMarkdown(data: tutor.commonMisconception),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -137,20 +159,29 @@ class LessonView extends ConsumerWidget {
                   // Practice Task
                   if (tutor.practiceTask.isNotEmpty) ...[
                     const SizedBox(height: 32),
-                    const Text('Practice',
-                        style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary)),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Text('Practice',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
                     const SizedBox(height: 12),
-                    TutorMarkdown(data: tutor.practiceTask),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: TutorMarkdown(data: tutor.practiceTask),
+                    ),
                   ],
 
                   // Curator Resources
                   if (lesson.curatorContent != null &&
                       !lesson.curatorContent!.isEmpty) ...[
                     const SizedBox(height: 40),
-                    CuratorResources(content: lesson.curatorContent!),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: CuratorResources(content: lesson.curatorContent!),
+                    ),
                   ],
                 ],
               ),
@@ -202,5 +233,3 @@ class LessonView extends ConsumerWidget {
     );
   }
 }
-
-

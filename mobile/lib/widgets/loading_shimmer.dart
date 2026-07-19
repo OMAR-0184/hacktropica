@@ -20,17 +20,24 @@ class LoadingShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final box = Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+    );
+
+    // Respect reduced-motion preference
+    if (MediaQuery.of(context).disableAnimations) {
+      return box;
+    }
+
     return Shimmer.fromColors(
       baseColor: AppColors.surface2,
       highlightColor: AppColors.border,
-      child: Container(
-        height: height,
-        width: width,
-        decoration: BoxDecoration(
-          color: AppColors.surface2,
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-      ),
+      child: box,
     );
   }
 

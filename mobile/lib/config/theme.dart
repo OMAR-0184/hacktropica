@@ -47,6 +47,8 @@ ThemeData buildAppTheme() {
 
   return base.copyWith(
     scaffoldBackgroundColor: AppColors.background,
+    splashFactory: InkSparkle.splashFactory,
+    visualDensity: VisualDensity.standard,
     colorScheme: const ColorScheme.dark(
       primary: AppColors.primary500,
       onPrimary: Colors.white,
@@ -70,7 +72,7 @@ ThemeData buildAppTheme() {
       ),
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: AppColors.surface,
+      backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       titleTextStyle: textTheme.titleMedium?.copyWith(

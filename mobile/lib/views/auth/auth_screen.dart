@@ -1,6 +1,8 @@
 /// Authentication screen — Login / Sign Up tabbed interface.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/theme.dart';
 import '../../viewmodels/auth_viewmodel.dart';
 import '../../widgets/error_banner.dart';
+import '../../widgets/staggered_list.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -93,75 +96,83 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 // ── Brand ────────────────────────────
-                const _BrandHeader(),
+                StaggeredFadeSlide(
+                  index: 0,
+                  slideOffset: 16,
+                  child: const _BrandHeader(),
+                ),
                 const SizedBox(height: 32),
 
                 // ── Card ─────────────────────────────
-                Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.surface.withAlpha(235),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(100),
-                        blurRadius: 40,
-                        offset: const Offset(0, 16),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        // Tab bar
-                        Container(
-                          decoration: BoxDecoration(
-                            color: AppColors.surface2,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: TabBar(
-                            controller: _tabCtrl,
-                            indicator: BoxDecoration(
-                              color: AppColors.primary500.withAlpha(30),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                  color: AppColors.primary500.withAlpha(60)),
-                            ),
-                            indicatorSize: TabBarIndicatorSize.tab,
-                            dividerHeight: 0,
-                            labelColor: Colors.white,
-                            unselectedLabelColor: AppColors.textMuted,
-                            labelStyle: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w600),
-                            tabs: const [
-                              Tab(text: 'Sign In'),
-                              Tab(text: 'Sign Up'),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // Error
-                        if (_error != null) ...[
-                          ErrorBanner(message: _error!),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Tab views
-                        SizedBox(
-                          height: _tabCtrl.index == 1 ? 340 : 260,
-                          child: TabBarView(
-                            controller: _tabCtrl,
-                            children: [
-                              _buildLoginForm(isLoading),
-                              _buildSignupForm(isLoading),
-                            ],
-                          ),
+                StaggeredFadeSlide(
+                  index: 1,
+                  slideOffset: 20,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface.withAlpha(235),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(100),
+                          blurRadius: 40,
+                          offset: const Offset(0, 16),
                         ),
                       ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        children: [
+                          // Tab bar
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.surface2,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            padding: const EdgeInsets.all(4),
+                            child: TabBar(
+                              controller: _tabCtrl,
+                              indicator: BoxDecoration(
+                                color: AppColors.primary500.withAlpha(30),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                    color: AppColors.primary500.withAlpha(60)),
+                              ),
+                              indicatorSize: TabBarIndicatorSize.tab,
+                              dividerHeight: 0,
+                              labelColor: Colors.white,
+                              unselectedLabelColor: AppColors.textMuted,
+                              labelStyle: const TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w600),
+                              tabs: const [
+                                Tab(text: 'Sign In'),
+                                Tab(text: 'Sign Up'),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Error
+                          if (_error != null) ...[
+                            ErrorBanner(message: _error!),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // Tab views
+                          SizedBox(
+                            height: _tabCtrl.index == 1 ? 340 : 260,
+                            child: TabBarView(
+                              controller: _tabCtrl,
+                              children: [
+                                _buildLoginForm(isLoading),
+                                _buildSignupForm(isLoading),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -290,31 +301,101 @@ class _AuthScreenState extends ConsumerState<AuthScreen>
   }
 }
 
-class _BrandHeader extends StatelessWidget {
+/// Brand header with animated gradient ring around the icon.
+class _BrandHeader extends StatefulWidget {
   const _BrandHeader();
 
   @override
+  State<_BrandHeader> createState() => _BrandHeaderState();
+}
+
+class _BrandHeaderState extends State<_BrandHeader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rotationCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _rotationCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+
     return Column(
       children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.primary500.withAlpha(60)),
-            color: AppColors.primary500.withAlpha(15),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary500.withAlpha(30),
-                blurRadius: 20,
+        SizedBox(
+          width: 68,
+          height: 68,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Animated gradient ring
+              if (!reduceMotion)
+                AnimatedBuilder(
+                  animation: _rotationCtrl,
+                  builder: (context, child) => Transform.rotate(
+                    angle: _rotationCtrl.value * 2 * math.pi,
+                    child: child,
+                  ),
+                  child: Container(
+                    width: 68,
+                    height: 68,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: SweepGradient(
+                        colors: [
+                          AppColors.primary500.withAlpha(80),
+                          AppColors.accent500.withAlpha(80),
+                          AppColors.primary500.withAlpha(10),
+                          AppColors.primary500.withAlpha(80),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 68,
+                  height: 68,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: AppColors.primary500.withAlpha(60)),
+                  ),
+                ),
+
+              // Icon container
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: AppColors.background,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary500.withAlpha(30),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.hub_outlined,
+                  color: AppColors.primary500,
+                  size: 28,
+                ),
               ),
             ],
-          ),
-          child: const Icon(
-            Icons.hub_outlined,
-            color: AppColors.primary500,
-            size: 28,
           ),
         ),
         const SizedBox(height: 16),

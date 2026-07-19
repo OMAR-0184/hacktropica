@@ -9,6 +9,7 @@ import '../../viewmodels/evaluation_viewmodel.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
 import '../../widgets/error_banner.dart';
 import '../../widgets/score_indicator.dart';
+import '../../widgets/staggered_list.dart';
 import 'wait_view.dart';
 
 class EvaluationView extends ConsumerWidget {
@@ -32,6 +33,8 @@ class EvaluationView extends ConsumerWidget {
         ),
       ),
       data: (eval) {
+        int staggerIndex = 0;
+
         return Stack(
           children: [
             SingleChildScrollView(
@@ -40,65 +43,84 @@ class EvaluationView extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Score ring
-                  ScoreIndicator(score: eval.score, size: 160),
+                  StaggeredFadeSlide(
+                    index: staggerIndex++,
+                    slideOffset: 30,
+                    child: ScoreIndicator(score: eval.score, size: 160),
+                  ),
                   const SizedBox(height: 32),
 
                   // Weak areas
                   if (eval.weakAreas.isNotEmpty) ...[
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Areas for Review',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary)),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Areas for Review',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary)),
+                      ),
                     ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      alignment: WrapAlignment.start,
-                      children: eval.weakAreas
-                          .map((wa) => Chip(
-                                label: Text(wa),
-                                backgroundColor:
-                                    AppColors.warning.withAlpha(20),
-                                side: BorderSide(
-                                    color: AppColors.warning.withAlpha(40)),
-                                labelStyle: const TextStyle(
-                                    color: AppColors.warning, fontSize: 13),
-                              ))
-                          .toList(),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.start,
+                        children: eval.weakAreas
+                            .map((wa) => Chip(
+                                  label: Text(wa),
+                                  backgroundColor:
+                                      AppColors.warning.withAlpha(20),
+                                  side: BorderSide(
+                                      color: AppColors.warning.withAlpha(40)),
+                                  labelStyle: const TextStyle(
+                                      color: AppColors.warning, fontSize: 13),
+                                ))
+                            .toList(),
+                      ),
                     ),
                     const SizedBox(height: 32),
                   ],
 
                   // Feedback text
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(eval.feedback,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            height: 1.5,
-                            color: AppColors.textPrimary)),
+                  StaggeredFadeSlide(
+                    index: staggerIndex++,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(eval.feedback,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              height: 1.5,
+                              color: AppColors.textPrimary)),
+                    ),
                   ),
                   const SizedBox(height: 40),
 
                   // Per-question breakdown
                   if (eval.questionResults.isNotEmpty) ...[
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Breakdown',
-                          style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary)),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text('Breakdown',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary)),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     for (int i = 0; i < eval.questionResults.length; i++)
-                      _QuestionBreakdownCard(
-                        qNum: i + 1,
-                        result: eval.questionResults[i],
+                      StaggeredFadeSlide(
+                        index: staggerIndex++,
+                        child: _QuestionBreakdownCard(
+                          qNum: i + 1,
+                          result: eval.questionResults[i],
+                        ),
                       ),
                   ],
                 ],
