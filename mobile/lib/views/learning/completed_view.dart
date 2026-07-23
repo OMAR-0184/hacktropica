@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../config/theme.dart';
 import '../../models/workflow.dart';
@@ -40,10 +41,16 @@ class CompletedView extends StatelessWidget {
                 child: _PulsingGlowCircle(
                   color: AppColors.success,
                   reduceMotion: reduceMotion,
-                  child: const Icon(
-                    Icons.emoji_events_outlined,
-                    size: 80,
-                    color: AppColors.success,
+                  child: Lottie.asset(
+                    'assets/lottie/celebration.json',
+                    width: 120,
+                    height: 120,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.emoji_events_outlined,
+                      size: 80,
+                      color: AppColors.success,
+                    ),
                   ),
                 ),
               ),

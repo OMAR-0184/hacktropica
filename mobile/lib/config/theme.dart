@@ -43,7 +43,7 @@ class AppColors {
 
 ThemeData buildAppTheme() {
   final base = ThemeData.dark(useMaterial3: true);
-  final textTheme = GoogleFonts.interTextTheme(base.textTheme);
+  final textTheme = GoogleFonts.robotoCondensedTextTheme(base.textTheme);
 
   return base.copyWith(
     scaffoldBackgroundColor: AppColors.background,

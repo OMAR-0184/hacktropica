@@ -27,10 +27,10 @@ from api.services.graph_helpers import snapshot_next_nodes
 
 async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
     """Fetch the generated quiz questions for the current subtopic."""
-    if db_session.status != "ready":
+    if db_session.status in ["initializing", "error", "archived"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Session is '{db_session.status}'. Wait for 'ready'.",
+            detail=f"Cannot fetch quiz while session is '{db_session.status}'.",
         )
 
     snapshot = await get_current_state(session_id)

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.database.core import get_db
@@ -42,12 +42,13 @@ async def list_sessions(
 
 @router.post("/start", response_model=StartResponse)
 async def start_learning(
+    fastapi_req: Request,
     request: LearningRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     db: AsyncSession = Depends(get_db),
 ):
     """Start a new asynchronous learning session."""
-    arq_pool = await _get_arq_pool()
+    arq_pool = fastapi_req.app.state.arq_pool
     return await create_session(
         topic=request.topic,
         course_mode=request.course_mode,
@@ -80,13 +81,4 @@ async def archive_session(
     return await _archive_session(db_session, db)
 
 
-# ── ARQ pool helper ──────────────────────────────────────────
 
-async def _get_arq_pool():
-    """Lazily get the ARQ pool for enqueuing jobs."""
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from api.config import get_api_settings
-
-    settings = get_api_settings()
-    return await create_pool(RedisSettings.from_dsn(settings.redis_url))
