@@ -42,7 +42,9 @@ class WorkflowViewModel extends FamilyAsyncNotifier<WorkflowSnapshot, String> {
     final service = ref.read(learningServiceProvider);
     final snapshot = await service.getWorkflow(arg);
 
-    if (snapshot.nextAction == NextAction.wait || snapshot.isLoading) {
+    if (snapshot.status == 'error' || snapshot.status == 'archived') {
+      _stopPolling();
+    } else if (snapshot.nextAction == NextAction.wait || snapshot.isLoading) {
       _scheduleNextPoll();
     } else {
       // Reset interval once we leave the wait state.

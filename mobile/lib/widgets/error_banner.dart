@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 import '../config/theme.dart';
 
 class ErrorBanner extends StatelessWidget {
@@ -21,7 +22,13 @@ class ErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          Lottie.asset(
+            'assets/lottie/error.json',
+            width: 24,
+            height: 24,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

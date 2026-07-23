@@ -37,7 +37,7 @@ async def get_lesson(
     Generates a starter lesson on-the-fly if no lesson exists yet.
     """
     # State guards
-    if db_session.status in ["initializing", "running", "evaluating"]:
+    if db_session.status in ["initializing"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot fetch lesson while session is '{db_session.status}'. Wait for 'ready'.",

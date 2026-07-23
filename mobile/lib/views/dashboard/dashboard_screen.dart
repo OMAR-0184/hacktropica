@@ -4,6 +4,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../config/constants.dart';
 import '../../config/theme.dart';
@@ -64,27 +66,19 @@ class DashboardScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Pulsing glow on empty-state icon
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0.3, end: 0.8),
-                    duration: const Duration(seconds: 2),
-                    curve: Curves.easeInOut,
-                    builder: (context, value, child) => Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.primary500.withAlpha((value * 20).toInt()),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.primary500.withAlpha((value * 30).toInt()),
-                            blurRadius: 24,
-                          ),
-                        ],
-                      ),
-                      child: child,
+                  // Lottie animation for empty state
+                  Lottie.asset(
+                    'assets/lottie/empty_dashboard.json',
+                    width: 200,
+                    height: 200,
+                    fit: BoxFit.contain,
+                    // If the user hasn't added the file yet, we can show a placeholder or let Lottie show its default error widget if the json is empty. 
+                    // Since it's an empty {}, it will throw an exception if we don't catch it or provide an errorBuilder.
+                    errorBuilder: (context, error, stackTrace) => Icon(
+                      Icons.explore_outlined,
+                      size: 64,
+                      color: AppColors.textDisabled,
                     ),
-                    child: Icon(Icons.explore_outlined,
-                        size: 64, color: AppColors.textDisabled),
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -113,25 +107,45 @@ class DashboardScreen extends ConsumerWidget {
               itemCount: sessions.length + 1,
               itemBuilder: (context, index) {
                 if (index == 0) {
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 24, left: 4),
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 24, left: 4),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Welcome back',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Colors.white, AppColors.primary200, AppColors.accent500],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ).createShader(bounds),
+                          child: Text(
+                            'Welcome back.',
+                            style: GoogleFonts.roboto(
+                              fontSize: 54,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                              letterSpacing: -2.0,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 12),
                         Text(
                           'Resume your journey or explore something new.',
-                          style: TextStyle(
+                          style: GoogleFonts.robotoMono(
                             fontSize: 14,
                             color: AppColors.textMuted,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+                        Text(
+                          'YOUR SUBJECTS',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                            color: AppColors.textDisabled,
                           ),
                         ),
                       ],
@@ -155,46 +169,90 @@ class DashboardScreen extends ConsumerWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primary500,
-        onPressed: () {
-          final sessions = sessionsAsync.value ?? [];
-          if (sessions.length >= AppConstants.maxActiveSessions) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Maximum 5 active sessions. Archive one to start a new session.'),
-              ),
-            );
-            return;
-          }
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => const NewSessionSheet(),
-          );
-        },
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: sessionsAsync.value?.isEmpty == true
+          ? FloatingActionButton.extended(
+              backgroundColor: AppColors.primary500,
+              onPressed: () => _handleNewSession(context, ref, sessionsAsync.value),
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('New Subject', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            )
+          : FloatingActionButton(
+              backgroundColor: AppColors.primary500,
+              onPressed: () => _handleNewSession(context, ref, sessionsAsync.value),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
     ));
+  }
+
+  void _handleNewSession(BuildContext context, WidgetRef ref, List<SessionSummary>? sessions) {
+    if (sessions != null && sessions.length >= AppConstants.maxActiveSessions) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Maximum 5 active sessions. Archive one to start a new session.')),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const NewSessionSheet(),
+    );
   }
 }
 
-class _SessionCard extends ConsumerWidget {
+class _SessionCard extends StatefulWidget {
   final SessionSummary session;
 
   const _SessionCard({required this.session});
 
-  Color get _statusColor => switch (session.status) {
-        'ready' => AppColors.success,
-        'running' || 'initializing' || 'evaluating' => AppColors.warning,
-        'completed' => AppColors.primary400,
+  @override
+  State<_SessionCard> createState() => _SessionCardState();
+}
+
+class _SessionCardState extends State<_SessionCard> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Color get _statusColor => switch (widget.session.status) {
+        'running' || 'evaluating' => AppColors.primary400,
+        'initializing' => AppColors.warning,
+        'completed' => AppColors.success,
         'error' => AppColors.error,
         _ => AppColors.textMuted,
       };
+      
+  String _timeAgo(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      final diff = DateTime.now().difference(date);
+      if (diff.inDays > 0) return '${diff.inDays} days ago';
+      if (diff.inHours > 0) return '${diff.inHours} hours ago';
+      if (diff.inMinutes > 0) return '${diff.inMinutes} mins ago';
+      return 'Just now';
+    } catch (_) {
+      return 'Recently';
+    }
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
+    final session = widget.session;
+    final isInitializing = session.status == 'initializing';
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    
     return Dismissible(
       key: ValueKey(session.sessionId),
       direction: DismissDirection.endToStart,
@@ -213,23 +271,17 @@ class _SessionCard extends ConsumerWidget {
               builder: (ctx) => AlertDialog(
                 backgroundColor: AppColors.surface,
                 title: const Text('Archive session?'),
-                content: Text(
-                    'Archive "${session.topic}"? You can\'t undo this.'),
+                content: Text('Archive "${session.topic}"? You can\'t undo this.'),
                 actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Cancel')),
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Archive',
-                          style: TextStyle(color: AppColors.error))),
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Archive', style: TextStyle(color: AppColors.error))),
                 ],
               ),
             ) ??
             false;
       },
       onDismissed: (_) {
-        ref
+        ProviderScope.containerOf(context, listen: false)
             .read(sessionListProvider.notifier)
             .archiveSession(session.sessionId);
       },
@@ -238,26 +290,37 @@ class _SessionCard extends ConsumerWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Status dot
-            Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _statusColor,
-                boxShadow: [
-                  BoxShadow(
-                      color: _statusColor.withAlpha(80), blurRadius: 6),
-                ],
-              ),
+            // Animated Status Dot
+            AnimatedBuilder(
+              animation: _pulseController,
+              builder: (context, child) {
+                final opacity = (isInitializing && !reduceMotion) 
+                    ? 0.4 + 0.6 * _pulseController.value 
+                    : 1.0;
+                return Opacity(
+                  opacity: opacity,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _statusColor,
+                      boxShadow: [
+                        BoxShadow(color: _statusColor.withAlpha(80), blurRadius: 6),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 16),
 
-            // Info
+            // Main Info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,41 +328,59 @@ class _SessionCard extends ConsumerWidget {
                   Text(
                     session.topic,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    session.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: _statusColor,
-                      letterSpacing: 0.8,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        session.status.toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _statusColor,
+                          letterSpacing: 0.8,
+                        ),
+                      ),
+                      if (session.overallProgress > 0) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(2),
+                            child: LinearProgressIndicator(
+                              value: session.overallProgress,
+                              minHeight: 4,
+                              backgroundColor: AppColors.surface2,
+                              color: AppColors.primary400,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                      ],
+                    ],
                   ),
                 ],
               ),
             ),
 
-            // Progress
-            if (session.overallProgress > 0)
-              SizedBox(
-                width: 40,
-                height: 40,
-                child: CircularProgressIndicator(
-                  value: session.overallProgress,
-                  strokeWidth: 3,
-                  backgroundColor: AppColors.surface2,
-                  color: AppColors.primary400,
+            // Trailing
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _timeAgo(session.createdAt),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textDisabled,
+                  ),
                 ),
-              ),
-
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right,
-                color: AppColors.textDisabled, size: 20),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, color: AppColors.textDisabled, size: 20),
+              ],
+            ),
           ],
         ),
       ),

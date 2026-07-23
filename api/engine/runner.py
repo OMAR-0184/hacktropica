@@ -7,6 +7,7 @@ class is initialized once during the FastAPI lifespan and shared across
 all requests.
 """
 
+import asyncio
 import json
 import logging
 import traceback
@@ -120,6 +121,12 @@ async def stream_graph_events(
             session_id, {"type": "status", "message": "Completed step"}
         )
         return True
+    except asyncio.CancelledError:
+        err_msg = "Task was cancelled (likely a job timeout)."
+        logger.error(f"Graph execution cancelled: {session_id}")
+        await _update_session_status(session_id, "error", error_message=err_msg)
+        await _publish_to_redis(session_id, {"type": "error", "message": err_msg})
+        raise
     except Exception as e:
         err_msg = str(e)
         logger.error(f"Graph execution error: {traceback.format_exc()}")

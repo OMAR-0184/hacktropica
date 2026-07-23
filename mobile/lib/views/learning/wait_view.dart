@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../config/theme.dart';
 
@@ -45,7 +46,15 @@ class WaitView extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: const _PulsingDots(),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: Lottie.asset(
+                  'assets/lottie/thinking.json',
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => const _PulsingDots(),
+                ),
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
