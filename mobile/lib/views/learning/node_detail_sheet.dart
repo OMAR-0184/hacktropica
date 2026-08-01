@@ -12,6 +12,7 @@ import '../../services/learning_service.dart';
 import '../../widgets/error_banner.dart';
 import '../../widgets/loading_shimmer.dart';
 import '../../widgets/tutor_markdown.dart';
+import '../../widgets/tutor_latex.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
 import 'quiz_view.dart';
 
@@ -194,14 +195,13 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                 }
 
                 final lesson = snapshot.data!;
-                final tutor = lesson.tutorContent;
                 final curator = lesson.curatorContent;
 
                 return TabBarView(
                   controller: _tabCtrl,
                   children: [
                     // Tutor Tab
-                    _buildTutorTab(tutor),
+                    _buildTutorTab(lesson),
 
                     // Curator Tab
                     _buildCuratorTab(curator),
@@ -218,7 +218,8 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
     );
   }
 
-  Widget _buildTutorTab(TutorContent? tutor) {
+  Widget _buildTutorTab(LessonResponse lesson) {
+    final tutor = lesson.tutorContent;
     if (tutor == null) {
       return const Center(child: Text('No tutor content available.'));
     }
@@ -228,6 +229,31 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (tutor.hook.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: AppColors.primary500.withAlpha(20),
+                border: const Border(
+                  left: BorderSide(color: AppColors.primary500, width: 4),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                tutor.hook,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          if (tutor.priorKnowledge.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: TutorMarkdown(data: "**Recall:** ${tutor.priorKnowledge}"),
+            ),
           if (tutor.learningObjective.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(16),
@@ -251,8 +277,8 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                 ),
               ),
             ),
-          TutorMarkdown(data: tutor.explanation),
-          if (tutor.examples.isNotEmpty) ...[
+          TutorMarkdown(data: tutor.coreExplanation.isNotEmpty ? tutor.coreExplanation : tutor.explanation),
+          if (tutor.workedExamples.isNotEmpty || tutor.examples.isNotEmpty) ...[
             const SizedBox(height: 32),
             const Text('Examples',
                 style: TextStyle(
@@ -260,10 +286,33 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary)),
             const SizedBox(height: 12),
-            for (final ex in tutor.examples) ...[
+            for (final ex in (tutor.workedExamples.isNotEmpty ? tutor.workedExamples : tutor.examples)) ...[
               TutorMarkdown(data: ex),
               const SizedBox(height: 12),
             ],
+          ],
+          if (tutor.visualDiagramDescription.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary500.withAlpha(30)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.image, color: AppColors.primary500, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(child: TutorMarkdown(data: tutor.visualDiagramDescription)),
+                ],
+              ),
+            ),
+          ],
+          if (lesson.latexValid && lesson.latexSource != null) ...[
+            const SizedBox(height: 32),
+            TutorLatex(latexSource: lesson.latexSource!),
           ],
           if (tutor.codeSnippet != null && tutor.codeSnippet!.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -307,6 +356,29 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                     color: AppColors.textPrimary)),
             const SizedBox(height: 12),
             TutorMarkdown(data: tutor.practiceTask),
+          ],
+          if (tutor.transferPrompt.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            const Text('Apply Your Knowledge',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            TutorMarkdown(data: tutor.transferPrompt),
+          ],
+          if (tutor.summary.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            const Text('Summary',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            for (final sum in tutor.summary) ...[
+              TutorMarkdown(data: "- $sum"),
+              const SizedBox(height: 8),
+            ],
           ],
         ],
       ),

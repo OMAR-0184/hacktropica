@@ -13,6 +13,7 @@ import '../../widgets/error_banner.dart';
 import '../../widgets/staggered_list.dart';
 
 import '../../widgets/tutor_markdown.dart';
+import '../../widgets/tutor_latex.dart';
 import 'wait_view.dart';
 
 class LessonView extends ConsumerWidget {
@@ -54,6 +55,42 @@ class LessonView extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Hook
+                  if (tutor.hook.isNotEmpty)
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 24),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary500.withAlpha(20),
+                          border: const Border(
+                            left: BorderSide(
+                                color: AppColors.primary500, width: 4),
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          tutor.hook,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 15,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Prior Knowledge
+                  if (tutor.priorKnowledge.isNotEmpty)
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: TutorMarkdown(data: "**Recall:** ${tutor.priorKnowledge}"),
+                      ),
+                    ),
+
                   // Objective
                   if (tutor.learningObjective.isNotEmpty)
                     StaggeredFadeSlide(
@@ -86,11 +123,11 @@ class LessonView extends ConsumerWidget {
                   // Main Explanation
                   StaggeredFadeSlide(
                     index: staggerIndex++,
-                    child: TutorMarkdown(data: tutor.explanation),
+                    child: TutorMarkdown(data: tutor.coreExplanation.isNotEmpty ? tutor.coreExplanation : tutor.explanation),
                   ),
 
                   // Examples
-                  if (tutor.examples.isNotEmpty) ...[
+                  if (tutor.workedExamples.isNotEmpty || tutor.examples.isNotEmpty) ...[
                     const SizedBox(height: 32),
                     StaggeredFadeSlide(
                       index: staggerIndex++,
@@ -101,13 +138,46 @@ class LessonView extends ConsumerWidget {
                               color: AppColors.textPrimary)),
                     ),
                     const SizedBox(height: 12),
-                    for (final ex in tutor.examples) ...[
+                    for (final ex in (tutor.workedExamples.isNotEmpty ? tutor.workedExamples : tutor.examples)) ...[
                       StaggeredFadeSlide(
                         index: staggerIndex++,
                         child: TutorMarkdown(data: ex),
                       ),
                       const SizedBox(height: 12),
                     ],
+                  ],
+
+                  // Visual Diagram Description
+                  if (tutor.visualDiagramDescription.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primary500.withAlpha(30)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.image, color: AppColors.primary500, size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(child: TutorMarkdown(data: tutor.visualDiagramDescription)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // LaTeX Source
+                  if (lesson.latexValid && lesson.latexSource != null) ...[
+                    const SizedBox(height: 32),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: TutorLatex(latexSource: lesson.latexSource!),
+                    ),
                   ],
 
                   // Code Snippet
@@ -172,6 +242,45 @@ class LessonView extends ConsumerWidget {
                       index: staggerIndex++,
                       child: TutorMarkdown(data: tutor.practiceTask),
                     ),
+                  ],
+
+                  // Transfer Prompt
+                  if (tutor.transferPrompt.isNotEmpty) ...[
+                    const SizedBox(height: 32),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Text('Apply Your Knowledge',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
+                    const SizedBox(height: 12),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: TutorMarkdown(data: tutor.transferPrompt),
+                    ),
+                  ],
+
+                  // Summary
+                  if (tutor.summary.isNotEmpty) ...[
+                    const SizedBox(height: 32),
+                    StaggeredFadeSlide(
+                      index: staggerIndex++,
+                      child: const Text('Summary',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
+                    const SizedBox(height: 12),
+                    for (final sum in tutor.summary) ...[
+                      StaggeredFadeSlide(
+                        index: staggerIndex++,
+                        child: TutorMarkdown(data: "- $sum"),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ],
 
                   // Curator Resources

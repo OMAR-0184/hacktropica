@@ -1,46 +1,71 @@
 """
-tutor_node — Generates explanation, examples, and code for the current subtopic.
+tutor_node — Generates structured lesson content + LaTeX document for the
+current subtopic.
+
+Outputs:
+  1. **Pedagogical JSON** following Gagné's Nine Events of Instruction,
+     integrated with Bloom's Taxonomy depth cues.
+  2. **LaTeX source** — a colorful, self-contained document with diagrams
+     (TikZ), styled boxes (tcolorbox), and equations (amsmath).  The raw
+     `.tex` is sent to the client; rendering happens Flutter-side.
+  3. A structural validation guardrail checks the LaTeX and feeds errors
+     back to the LLM for self-correction (max 2 retries) without ever
+     invoking a compiler.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from typing import Any
-
-from agent.nodes._llm_call import invoke_llm_json
+from agent.nodes._llm_call import invoke_llm
+from agent.guardrails.latex_syntax import validate_latex, ValidationResult
 from agent.state import CognimapState
 
-_SYSTEM_PROMPT = """\
-You are an expert tutor. Given a subtopic within a broader topic, produce a
-structured lesson. Return ONLY a JSON object with these keys:
-- "learning_objective": one sentence describing what the learner should be able to do
-- "explanation": a clear, concise explanation (2-4 paragraphs)
-- "examples": a list of 2-3 illustrative examples (strings)
-- "common_misconception": one common mistake learners make on this topic, with correction
-- "practice_task": one short task the learner can do right now
-- "code_snippet": a relevant code snippet if applicable, otherwise null
+logger = logging.getLogger(__name__)
 
-Write in child-safe language suitable for younger learners. Do not use profanity
-or unsafe content.
+# ── System prompts ────────────────────────────────────────────
 
-Quality rules:
-- Be technically accurate and avoid vague placeholders.
-- Avoid repetitive toy metaphors ("tiny", "special path", etc.).
-- For detailed mode, prefer academically clear language with concrete terminology.
-- Use examples grounded in the actual subject, not generic analogies.
-- Include at least one deep explanatory thread (cause-effect, mechanism, or derivation where relevant).
-- Include one practical transfer example that connects this node to what learner should study next.
-- When the topic is quantitative, include equations/units/steps conceptually (and code only if genuinely useful).
+_LATEX_SYSTEM_PROMPT = """\
+You are an expert tutor and LaTeX document author. Given a subtopic and lesson context,
+produce a COMPLETE, COMPILABLE LaTeX document that serves as a beautiful, colorful lesson handout.
+
+REQUIREMENTS:
+1. Use \\documentclass[12pt]{article}
+2. Use ONLY these packages: amsmath, amssymb, xcolor, tikz, tcolorbox, geometry,
+   enumitem, hyperref, fontenc, inputenc, booktabs, tabularx
+3. Define 4-5 custom colors using \\definecolor with attractive, modern tones
+   (e.g. deep blues, teals, warm oranges, purples — NOT plain red/green/blue).
+4. The document MUST incorporate Gagné's Nine Events of Instruction natively. Use `tcolorbox` or `\\section` to structure the following elements in detailed discussion:
+   - A Hook (attention grabber)
+   - Prior Knowledge connection
+   - Learning Objective
+   - Core Explanation (detailed discussion with progressive complexity)
+   - Worked Examples (step-by-step reasoning)
+   - Common Misconceptions
+   - A Practice Task
+   - A Transfer Prompt (real-world application)
+   - A Summary (3 bullet points)
+5. Include at least ONE amazing, highly descriptive TikZ diagram that illustrates the core concept in vivid detail.
+6. Use \\section, \\subsection for clear document structure.
+7. Use proper mathematical typesetting for ALL equations/formulas.
+8. The document must be SELF-CONTAINED — do not reference external files.
+9. Use \\color{} and \\textcolor{} generously to make headings and key terms visually amazing.
+
+CRITICAL RULES:
+- Return ONLY the raw LaTeX source code. Do NOT wrap it in JSON. Do NOT wrap it in markdown backticks (e.g. ```latex). Just return the raw LaTeX string starting with \\documentclass.
+- Every \\begin{X} MUST have a matching \\end{X}.
+- Every opening { MUST have a closing }.
+- Every opening $ MUST have a closing $.
+- Do NOT leave any environment empty.
+- Do NOT use packages not listed above.
 """
 
-_DEFAULTS = {
-    "learning_objective": "Understand the main concept and apply it in a simple scenario.",
-    "explanation": "Content could not be generated. Please try again.",
-    "examples": [],
-    "common_misconception": "A common misconception could not be generated.",
-    "practice_task": "Try explaining this concept in your own words with one example.",
-    "code_snippet": None,
-}
+_LATEX_MAX_RETRIES = 2
+
+
+# ── Public entry point ────────────────────────────────────────
 
 
 async def tutor_node(state: CognimapState) -> dict[str, Any]:
@@ -72,77 +97,127 @@ async def tutor_node(state: CognimapState) -> dict[str, Any]:
         f"Math-heavy node: {is_math_heavy}"
     )
     if learner_profile:
-        user_prompt += f"\n\nHistorical Learner Weaknesses to explicitly address/simplify in this lesson:\n{learner_profile}"
+        user_prompt += (
+            f"\n\nHistorical Learner Weaknesses to explicitly "
+            f"address/simplify in this lesson:\n{learner_profile}"
+        )
 
-    tutor_content = await invoke_llm_json(
-        node_type="tutor",
-        temperature=0.2,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        required_keys=[
-            "learning_objective",
-            "explanation",
-            "examples",
-            "common_misconception",
-            "practice_task",
-        ],
-        defaults=_DEFAULTS,
+    latex_result = await _generate_latex_content(topic, current, user_prompt)
+
+    return {
+        "tutor_content": {},
+        "latex_content": latex_result,
+    }
+
+
+# ── LaTeX generation with validation guardrail ────────────────
+
+
+async def _generate_latex_content(
+    topic: str, current: str, user_prompt: str
+) -> dict[str, Any]:
+    """
+    Generate a LaTeX document and validate it structurally.
+
+    If validation fails, feed the errors back to the LLM and retry
+    (up to ``_LATEX_MAX_RETRIES`` times).  On final failure, return
+    empty LaTeX with ``latex_valid=False``.
+    """
+    latex_user_prompt = (
+        f"{user_prompt}\n\n"
+        f"Create a beautiful, colorful LaTeX lesson handout for '{current}' "
+        f"within the broader topic '{topic}'."
     )
 
-    if _needs_quality_retry(tutor_content, course_mode):
-        retry_user_prompt = (
-            f"{user_prompt}\n\n"
-            "Regenerate with higher technical quality. Keep it clear, but avoid simplistic metaphors. "
-            "For science topics, use accurate vocabulary and concise precision."
-        )
-        tutor_content = await invoke_llm_json(
+    messages = [
+        {"role": "system", "content": _LATEX_SYSTEM_PROMPT},
+        {"role": "user", "content": latex_user_prompt},
+    ]
+
+    last_validation: ValidationResult | None = None
+
+    for attempt in range(1, _LATEX_MAX_RETRIES + 2):  # 1-indexed, up to max+1
+        latex_source = await invoke_llm(
             node_type="tutor",
             temperature=0.15,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": retry_user_prompt},
-            ],
-            required_keys=[
-                "learning_objective",
-                "explanation",
-                "examples",
-                "common_misconception",
-                "practice_task",
-            ],
-            defaults=_DEFAULTS,
+            messages=messages,
         )
 
-    return {"tutor_content": tutor_content}
+        latex_source = latex_source.strip()
+        # Clean up markdown fences just in case
+        if latex_source.startswith("```latex"):
+            latex_source = latex_source[8:]
+        if latex_source.startswith("```"):
+            latex_source = latex_source[3:]
+        if latex_source.endswith("```"):
+            latex_source = latex_source[:-3]
+        latex_source = latex_source.strip()
+        if not latex_source:
+            logger.warning(
+                "[tutor/latex] Attempt %d: LLM returned empty LaTeX source.",
+                attempt,
+            )
+            if attempt <= _LATEX_MAX_RETRIES:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "The LaTeX source you returned was empty. "
+                            "Please generate a complete LaTeX document."
+                        ),
+                    }
+                )
+                continue
+            break
 
+        # ── Structural validation guardrail ───────────────────
+        validation = validate_latex(latex_source)
+        last_validation = validation
 
-def _needs_quality_retry(content: dict[str, Any], course_mode: str) -> bool:
-    explanation = str(content.get("explanation", "")).strip()
-    examples = content.get("examples", [])
-    if not isinstance(examples, list):
-        examples = []
+        if validation.valid:
+            logger.info(
+                "[tutor/latex] LaTeX validated successfully on attempt %d "
+                "(warnings: %d).",
+                attempt,
+                len(validation.warnings),
+            )
+            return {
+                "latex_source": latex_source,
+                "latex_valid": True,
+                "validation_warnings": validation.warnings,
+                "attempts": attempt,
+            }
 
-    word_count = len(re.findall(r"\w+", explanation))
-    lower = explanation.lower()
-    bad_phrase_hits = sum(
-        lower.count(p) for p in ("tiny", "special path", "tiny atom", "tiny ball")
+        # Validation failed — feed errors back for retry.
+        logger.warning(
+            "[tutor/latex] Attempt %d: validation failed with %d error(s): %s",
+            attempt,
+            len(validation.errors),
+            "; ".join(validation.errors),
+        )
+        if attempt <= _LATEX_MAX_RETRIES:
+            messages.append(
+                {"role": "assistant", "content": latex_source}
+            )
+            messages.append(
+                {"role": "user", "content": validation.feedback_for_llm}
+            )
+
+    # All retries exhausted.
+    logger.error(
+        "[tutor/latex] All %d LaTeX attempts failed. Returning invalid.",
+        _LATEX_MAX_RETRIES + 1,
     )
+    return {
+        "latex_source": latex_source if "latex_source" in dir() else "",
+        "latex_valid": False,
+        "validation_errors": (
+            last_validation.errors if last_validation else ["Generation failed."]
+        ),
+        "validation_warnings": (
+            last_validation.warnings if last_validation else []
+        ),
+        "attempts": _LATEX_MAX_RETRIES + 1,
+    }
 
-    if course_mode == "detailed":
-        if word_count < 90:
-            return True
-        if bad_phrase_hits >= 2:
-            return True
-        if any("imagine" in str(ex).lower() for ex in examples):
-            return True
-    else:
-        if word_count < 45:
-            return True
-        if bad_phrase_hits >= 3:
-            return True
 
-    return False

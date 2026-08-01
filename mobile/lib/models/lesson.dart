@@ -2,31 +2,61 @@
 library;
 
 class TutorContent {
+  final String hook;
+  final String priorKnowledge;
   final String learningObjective;
-  final String explanation;
-  final List<String> examples;
+  final String coreExplanation;
+  final List<String> workedExamples;
+  final String visualDiagramDescription;
   final String commonMisconception;
   final String practiceTask;
+  final String transferPrompt;
+  final List<String> summary;
+
+  // Legacy fields
+  final String explanation;
+  final List<String> examples;
   final String? codeSnippet;
 
   const TutorContent({
+    this.hook = '',
+    this.priorKnowledge = '',
     this.learningObjective = '',
-    this.explanation = '',
-    this.examples = const [],
+    this.coreExplanation = '',
+    this.workedExamples = const [],
+    this.visualDiagramDescription = '',
     this.commonMisconception = '',
     this.practiceTask = '',
+    this.transferPrompt = '',
+    this.summary = const [],
+    this.explanation = '',
+    this.examples = const [],
     this.codeSnippet,
   });
 
   factory TutorContent.fromJson(Map<String, dynamic> json) => TutorContent(
+        hook: json['hook'] as String? ?? '',
+        priorKnowledge: json['prior_knowledge'] as String? ?? '',
         learningObjective: json['learning_objective'] as String? ?? '',
+        coreExplanation: json['core_explanation'] as String? ?? '',
+        workedExamples: (json['worked_examples'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [],
+        visualDiagramDescription:
+            json['visual_diagram_description'] as String? ?? '',
+        commonMisconception: json['common_misconception'] as String? ?? '',
+        practiceTask: json['practice_task'] as String? ?? '',
+        transferPrompt: json['transfer_prompt'] as String? ?? '',
+        summary: (json['summary'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [],
         explanation: json['explanation'] as String? ?? '',
         examples: (json['examples'] as List<dynamic>?)
                 ?.map((e) => e as String)
                 .toList() ??
             [],
-        commonMisconception: json['common_misconception'] as String? ?? '',
-        practiceTask: json['practice_task'] as String? ?? '',
         codeSnippet: json['code_snippet'] as String?,
       );
 }
@@ -91,6 +121,8 @@ class LessonResponse {
   final String? nodeId;
   final TutorContent? tutorContent;
   final CuratorContent? curatorContent;
+  final String? latexSource;
+  final bool latexValid;
   final bool isRemediation;
   final String? parentNodeId;
   final int? depth;
@@ -104,6 +136,8 @@ class LessonResponse {
     this.nodeId,
     this.tutorContent,
     this.curatorContent,
+    this.latexSource,
+    this.latexValid = false,
     this.isRemediation = false,
     this.parentNodeId,
     this.depth,
@@ -125,6 +159,8 @@ class LessonResponse {
             ? CuratorContent.fromJson(
                 json['curator_content'] as Map<String, dynamic>)
             : null,
+        latexSource: json['latex_source'] as String?,
+        latexValid: json['latex_valid'] as bool? ?? false,
         isRemediation: json['is_remediation'] as bool? ?? false,
         parentNodeId: json['parent_node_id'] as String?,
         depth: json['depth'] as int?,

@@ -46,44 +46,72 @@ def build_fallback_questions(
     expected_count: int = MCQ_COUNT,
     numerical_target_ratio: float = 0.0,
 ) -> list[dict[str, Any]]:
-    """Return deterministic fallback MCQs when LLM quiz generation fails."""
+    """Return deterministic fallback MCQs when LLM quiz generation fails.
+
+    These are intentionally varied in structure and correct_index position
+    to avoid predictable patterns.
+    """
     topic = subtopic or "this topic"
     expected_count = max(1, int(expected_count))
     base: list[dict[str, Any]] = [
         {
             "question_id": "q1",
-            "question": f"Which option best applies the core idea of {topic} to a practical scenario?",
+            "question": f"What is the primary purpose of {topic}?",
             "options": [
-                "Select the choice that correctly applies the core concept to a real case.",
-                "Choose a definition that only repeats terminology without application.",
-                "Pick a statement unrelated to the scenario context.",
-                "Select an answer that contradicts the key principle.",
+                f"It provides a foundational framework for understanding related concepts.",
+                f"It serves as a historical reference with no modern applications.",
+                f"It replaces all prior approaches to the subject entirely.",
+                f"It is used exclusively in theoretical contexts, never in practice.",
             ],
             "correct_index": 0,
             "concept": topic,
         },
         {
             "question_id": "q2",
-            "question": f"When analyzing {topic}, which approach reflects sound reasoning?",
+            "question": f"Which factor most directly influences outcomes in {topic}?",
             "options": [
-                "Compare alternatives using explicit assumptions and tradeoffs.",
-                "Ignore assumptions and rely only on memorized wording.",
-                "Treat all alternatives as equivalent without evidence.",
-                "Use circular reasoning and restate the question.",
+                f"The order in which steps are performed, regardless of context.",
+                f"The relationship between the input conditions and constraints.",
+                f"The number of times the process has been attempted before.",
+                f"The specific tools used, independent of the underlying method.",
             ],
-            "correct_index": 0,
+            "correct_index": 1,
             "concept": topic,
         },
         {
             "question_id": "q3",
-            "question": f"Which choice demonstrates correct evaluation of outcomes in {topic}?",
+            "question": f"A student confuses {topic} with a related concept. What is the most likely cause?",
             "options": [
-                "Judge outcomes against clear criteria aligned with the lesson.",
-                "Pick the first option without checking the criteria.",
-                "Evaluate based only on style, not correctness.",
-                "Skip evaluation and assume all outcomes are valid.",
+                f"They memorized the definition but skipped the worked examples.",
+                f"They studied the wrong chapter in the textbook.",
+                f"They overlooked a key distinction in how conditions are applied.",
+                f"They relied on intuition instead of formal definitions.",
             ],
-            "correct_index": 0,
+            "correct_index": 2,
+            "concept": topic,
+        },
+        {
+            "question_id": "q4",
+            "question": f"How would you verify that a solution correctly applies {topic}?",
+            "options": [
+                f"Check that the solution uses the same vocabulary as the lesson.",
+                f"Compare the result with a known benchmark or test case.",
+                f"Ask a peer whether the answer looks reasonable.",
+                f"Confirm that the solution follows the steps in the exact order given.",
+            ],
+            "correct_index": 1,
+            "concept": topic,
+        },
+        {
+            "question_id": "q5",
+            "question": f"What happens when a key assumption of {topic} is violated?",
+            "options": [
+                f"The results remain valid but require additional computation.",
+                f"The approach still works but produces approximate results.",
+                f"The analysis must be restarted from scratch with new data.",
+                f"The conclusions may be invalid and require a different method.",
+            ],
+            "correct_index": 3,
             "concept": topic,
         },
     ]
@@ -92,34 +120,45 @@ def build_fallback_questions(
     )
     if numerical_required > 0:
         for i in range(1, numerical_required + 1):
+            correct_pos = (i - 1) % MCQ_OPTION_COUNT
+            options = [
+                f"The result depends on the initial conditions of case {i}.",
+                f"Apply the standard formula and verify units are consistent.",
+                f"The answer requires converting between measurement systems.",
+                f"The numerical value is determined by dimensional analysis.",
+            ]
+            # Rotate the correct answer to the designated position.
+            correct_option = options[1]  # "Apply the standard formula..."
+            options[1] = options[correct_pos]
+            options[correct_pos] = correct_option
             base.append(
                 {
                     "question_id": f"qn{i}",
-                    "question": f"Compute and verify the correct numerical result for {topic} case {i}.",
-                    "options": [
-                        f"Use the correct formula and compute the value for case {i}.",
-                        f"Skip the formula and guess the result for case {i}.",
-                        f"Use unrelated values that do not match case {i}.",
-                        f"Choose an option with inconsistent units for case {i}.",
-                    ],
-                    "correct_index": 0,
+                    "question": f"What is the correct approach to solve a quantitative problem in {topic} (case {i})?",
+                    "options": options,
+                    "correct_index": correct_pos,
                     "concept": topic,
                 }
             )
 
     while len(base) < expected_count:
         i = len(base) + 1
+        correct_pos = (i - 1) % MCQ_OPTION_COUNT
+        options = [
+            f"Identify the constraints, then select the method that satisfies them.",
+            f"Apply the most recently learned technique regardless of fit.",
+            f"Eliminate impossible answers, then evaluate the remaining options.",
+            f"Choose the approach that produces the simplest expression.",
+        ]
+        correct_option = options[0]
+        options[0] = options[correct_pos]
+        options[correct_pos] = correct_option
         base.append(
             {
                 "question_id": f"q{i}",
-                "question": f"In {topic}, which option best demonstrates strong reasoning for case {i}?",
-                "options": [
-                    f"Apply lesson principles with clear evidence for case {i}.",
-                    f"Use a guess without checking the lesson criteria for case {i}.",
-                    f"Ignore the scenario constraints and pick a random method for case {i}.",
-                    f"Repeat memorized wording without solving the actual problem in case {i}.",
-                ],
-                "correct_index": 0,
+                "question": f"When solving a problem involving {topic}, what is the best first step?",
+                "options": options,
+                "correct_index": correct_pos,
                 "concept": topic,
             }
         )
@@ -483,9 +522,25 @@ def _ensure_numerical_ratio(
     return out
 
 
+# Phrases that indicate meta-phrased, template-style options (not real content).
+_META_OPTION_PREFIXES = (
+    "select the choice",
+    "choose the option",
+    "pick the answer",
+    "select the answer",
+    "choose a definition",
+    "pick a statement",
+    "select an answer",
+)
+
+
 def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
     normalized_prompt = str(prompt or "").strip()
-    if len(re.findall(r"\w+", normalized_prompt)) < 5:
+    word_count = len(re.findall(r"\w+", normalized_prompt))
+    if word_count < 5:
+        return True
+    # Reject overly verbose stems (>40 words).
+    if word_count > 40:
         return True
     if _looks_like_gibberish(normalized_prompt):
         return True
@@ -500,8 +555,10 @@ def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
 
     placeholder_like = 0
     empty_like = 0
+    meta_phrased = 0
     seen_options: set[str] = set()
     substantive_options = 0
+    option_structures: list[str] = []
     for raw_opt in options:
         opt = str(raw_opt or "").strip()
         if not opt:
@@ -522,6 +579,11 @@ def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
             return True
         if re.fullmatch(r"option\s+[a-d]", opt.lower()):
             placeholder_like += 1
+
+        # Reject meta-phrased options ("Select the choice that...").
+        if any(lower_opt.startswith(prefix) for prefix in _META_OPTION_PREFIXES):
+            meta_phrased += 1
+
         token_count = len(re.findall(r"\w+", opt))
         has_digits = bool(re.search(r"\d", opt))
         if token_count < 2 and not has_digits:
@@ -529,12 +591,26 @@ def _is_low_quality_question(prompt: str, options: list[str]) -> bool:
         if token_count >= 3 or has_digits:
             substantive_options += 1
 
+        # Track structural pattern to detect template-generated options.
+        # Extract first 3 words as structure fingerprint.
+        words = re.findall(r"[a-z]+", lower_opt)
+        structure = " ".join(words[:3]) if len(words) >= 3 else ""
+        if structure:
+            option_structures.append(structure)
+
     if empty_like > 0:
         return True
     if placeholder_like >= 2:
         return True
+    if meta_phrased >= 2:
+        return True
     if substantive_options < 2:
         return True
+
+    # Reject structurally identical template options (all 4 start the same way).
+    if len(option_structures) >= 4 and len(set(option_structures)) == 1:
+        return True
+
     return False
 
 

@@ -16,10 +16,14 @@ async def lesson_generator_node(state: CognimapState) -> dict[str, Any]:
     
     current = state["current_node"]
     
+    # Extract LaTeX content (generated inside tutor_node in parallel with text).
+    latex_content = tutor_res.get("latex_content", {})
+
     lesson = {
         "subtopic": current,
         "tutor_content": tutor_res.get("tutor_content", {}),
         "curator_content": curator_res.get("curator_content", {}),
+        "latex": latex_content,
     }
 
     history = list(state.get("history", []))
@@ -31,5 +35,6 @@ async def lesson_generator_node(state: CognimapState) -> dict[str, Any]:
         "lesson": lesson, 
         "tutor_content": tutor_res.get("tutor_content", {}),
         "curator_content": curator_res.get("curator_content", {}),
+        "latex_content": latex_content,
         "history": history
     }
