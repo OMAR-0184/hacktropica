@@ -7,9 +7,23 @@
 
 
 
+# Flow Diagram
+
+
+
+<img width="862" height="529" alt="Screenshot 2026-08-02 at 4 04 16 PM" src="https://github.com/user-attachments/assets/1b5c04e0-ee06-4095-a6c6-4d672a1ae4d1" />
+
 
 
 
 
 # UI
-<img width="1440" height="814" alt="image" src="https://github.com/user-attachments/assets/513b367a-4e15-47e0-9266-44933def73f3" />
+
+<img width="1438" height="822" alt="Screenshot 2026-08-02 at 4 17 39 PM" src="https://github.com/user-attachments/assets/a4db53a1-bc0a-4a54-9f9d-05f2ee30695d" />
+
+
+<img width="1440" height="812" alt="Screenshot 2026-08-02 at 4 18 51 PM" src="https://github.com/user-attachments/assets/cfd2f163-9ca9-4714-a652-8a4528c7c261" />
+
+
+<img width="1440" height="815" alt="Screenshot 2026-08-02 at 3 37 51 PM" src="https://github.com/user-attachments/assets/ddff67a1-d7a4-47f6-b477-7fd18752d931" />
+
