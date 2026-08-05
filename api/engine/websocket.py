@@ -1,8 +1,3 @@
-"""
-WebSocket connection manager backed by Redis pub/sub.
-
-Uses the shared Redis connection pool instead of creating its own.
-"""
 
 import json
 import asyncio
@@ -14,7 +9,6 @@ from api.redis import get_redis
 
 class ConnectionManager:
     def __init__(self):
-        # Maps session_id to a list of active WebSockets
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self._redis = None
         self._pubsub = None
@@ -28,7 +22,7 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, session_id: str):
         await websocket.accept()
-        self._get_redis()  # Ensure Redis is initialized
+        self._get_redis()
         if session_id not in self.active_connections:
             self.active_connections[session_id] = []
             await self._pubsub.subscribe(f"session:{session_id}")

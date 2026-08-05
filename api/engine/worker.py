@@ -1,9 +1,4 @@
-"""
-arq Worker Configuration
 
-This module acts as the ARQ worker entry point.
-Run via: arq api.engine.worker.WorkerSettings
-"""
 
 import logging
 from arq.connections import RedisSettings

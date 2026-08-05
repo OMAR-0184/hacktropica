@@ -1,10 +1,29 @@
-# hacktropica
-Repository for hacktropica
+# Cognimap
 
-## Architecture Overview
 
-### Guardrails
-Cognimap incorporates specific LLM quality guardrails to ensure robust output from the nodes:
-- `agent/guardrails/tutor_quality.py`: Contains content validation heuristics (`check_tutor_quality`) that evaluate LLM tutor outputs for word count and repetitive phrases.
-- `agent/guardrails/quiz_quality.py`: Contains validation heuristics (`check_quiz_quality`) that ensure quiz questions have appropriate length, no duplicate options, and varied correct answer positions.
-- `agent/guardrails/latex_syntax.py`: A structural LaTeX validator that verifies syntax (e.g., balanced braces, environment matching, Flutter-compatible packages) without needing a full TeX compiler. If LaTeX compilation is invalid, the LLM receives specific syntax errors to fix.
+# Architecture
+
+<img width="613" height="275" alt="image" src="https://github.com/user-attachments/assets/579f227d-1ec6-447b-9406-622c678220cb" />
+
+
+
+# Flow Diagram
+
+
+
+<img width="862" height="529" alt="Screenshot 2026-08-02 at 4 04 16 PM" src="https://github.com/user-attachments/assets/1b5c04e0-ee06-4095-a6c6-4d672a1ae4d1" />
+
+
+
+
+
+# UI
+
+<img width="1438" height="822" alt="Screenshot 2026-08-02 at 4 17 39 PM" src="https://github.com/user-attachments/assets/a4db53a1-bc0a-4a54-9f9d-05f2ee30695d" />
+
+
+<img width="1440" height="812" alt="Screenshot 2026-08-02 at 4 18 51 PM" src="https://github.com/user-attachments/assets/cfd2f163-9ca9-4714-a652-8a4528c7c261" />
+
+
+<img width="1440" height="815" alt="Screenshot 2026-08-02 at 3 37 51 PM" src="https://github.com/user-attachments/assets/ddff67a1-d7a4-47f6-b477-7fd18752d931" />
+
