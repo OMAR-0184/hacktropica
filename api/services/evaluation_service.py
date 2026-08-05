@@ -121,6 +121,22 @@ async def get_evaluation_result(session_id: str) -> EvaluationResult:
     return build_evaluation_result(snapshot.values)
 
 
+async def get_evaluation_for_node(session_id: str, node_id: str) -> EvaluationResult:
+    """Retrieve the detailed evaluation result for a specific past node."""
+    snapshot = await get_current_state(session_id)
+    if not snapshot or not snapshot.values:
+        raise HTTPException(status_code=400, detail="Graph not initialized.")
+    
+    evaluations = snapshot.values.get("evaluations", {})
+    if not isinstance(evaluations, dict) or node_id not in evaluations:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No detailed evaluation found for node {node_id}.",
+        )
+    
+    return build_evaluation_result({"evaluation": evaluations[node_id]})
+
+
 def build_evaluation_result(values: dict[str, Any]) -> EvaluationResult:
     """Transform raw evaluation dict into a typed response model."""
     evaluation = values.get("evaluation", {})

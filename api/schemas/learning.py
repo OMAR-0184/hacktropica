@@ -75,12 +75,21 @@ class NodeHierarchyMeta(BaseModel):
 
 
 class TutorContent(BaseModel):
+    # ── New pedagogical fields (Gagné's 9 Events) ─────────────
+    hook: str = ""
+    prior_knowledge: str = ""
     learning_objective: str = ""
-    explanation: str = ""
-    examples: List[str] = []
+    core_explanation: str = ""
+    worked_examples: List[str] = []
+    visual_diagram_description: str = ""
     common_misconception: str = ""
     practice_task: str = ""
+    transfer_prompt: str = ""
+    summary: List[str] = []
     code_snippet: Optional[str] = None
+    # ── Legacy fields (backward-compat) ───────────────────────
+    explanation: str = ""
+    examples: List[str] = []
 
 
 class CuratorResource(BaseModel):
@@ -109,6 +118,10 @@ class LessonResponse(BaseModel):
     node_id: Optional[str] = None
     tutor_content: Optional[TutorContent] = None
     curator_content: Optional[CuratorContent] = None
+    # ── Markdown content (raw source) ────
+    markdown_source: Optional[str] = None
+    markdown_valid: bool = False
+    # ── Node metadata ─────────────────────────────────────────
     is_remediation: bool = False
     parent_node_id: Optional[str] = None
     depth: Optional[int] = None

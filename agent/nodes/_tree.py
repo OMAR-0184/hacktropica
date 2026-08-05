@@ -67,16 +67,48 @@ def build_node_meta(
 def determine_quiz_profile(
     node_meta: dict[str, Any] | None, node_id: str
 ) -> tuple[int, float]:
+    """Return (question_count, numerical_target_ratio) based on Bloom depth.
+
+    Depth-based alignment with Bloom's Taxonomy:
+      - Depth 0 / intro: 5 questions, mostly Remember/Understand
+      - Depth 1 / concept: 6 questions, balanced Apply/Analyze
+      - Depth 2+ / advanced: 8 questions, emphasizing Analyze/Evaluate
+      - Remediation: 4 questions, focused on the specific weak areas
+
+    Math-heavy nodes always include a numerical question ratio.
+    """
     meta = node_meta or {}
     node_kind = str(meta.get("node_kind", "") or "").lower()
     math_heavy = bool(meta.get("is_math_heavy", False))
+    depth = int(meta.get("depth", 0))
     normalized_id = str(node_id or "").strip().lower()
 
+    # Remediation nodes: short, targeted quiz.
+    if node_kind == "remediation":
+        return 4, 0.4 if math_heavy else 0.0
+
+    # Intro nodes: lightweight recall quiz.
     if node_kind == "intro" or normalized_id.startswith("intro to "):
         return 5, 0.0
-    if math_heavy:
-        return 10, 0.6
-    return 7, 0.0
+
+    # Depth-based scaling.
+    if depth <= 0:
+        question_count = 5
+        numerical_ratio = 0.3 if math_heavy else 0.0
+    elif depth == 1:
+        question_count = 6
+        numerical_ratio = 0.5 if math_heavy else 0.0
+    else:  # depth >= 2 (advanced)
+        question_count = 8
+        numerical_ratio = 0.6 if math_heavy else 0.0
+
+    # Advanced node_kind gets the deeper profile regardless of depth.
+    if node_kind == "advanced" and question_count < 8:
+        question_count = 8
+        if math_heavy:
+            numerical_ratio = 0.6
+
+    return question_count, numerical_ratio
 
 
 def uniquify_titles(raw_titles: list[str], existing: set[str]) -> list[str]:

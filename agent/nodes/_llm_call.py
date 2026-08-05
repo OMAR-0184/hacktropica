@@ -139,3 +139,58 @@ async def invoke_llm_json(
         last_raw or "(none)",
     )
     return dict(defaults)
+
+
+async def invoke_llm(
+    *,
+    node_type: str,
+    messages: list[dict[str, str]],
+    temperature: float | None = None,
+) -> str:
+    """
+    Invoke an LLM and return the raw string response, with retry.
+
+    Args:
+        node_type: Which LLM config to use.
+        messages: Chat messages to send to the LLM.
+        temperature: Override temperature for this call.
+
+    Returns:
+        The raw text response from the LLM. Returns empty string on complete failure.
+    """
+    settings = get_settings()
+    max_retries = settings.llm_max_retries
+    retry_delay = settings.llm_retry_delay
+
+    last_error: str | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            llm = get_llm(node_type=node_type, temperature=temperature)
+            response = await llm.ainvoke(messages)
+            content = response.content
+            if isinstance(content, list):
+                raw = "".join(str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content).strip()
+            else:
+                raw = str(content).strip()
+                
+            return raw
+
+        except Exception as exc:
+            last_error = str(exc)
+            logger.error(
+                "[%s] Attempt %d failed with error: %s",
+                node_type,
+                attempt,
+                last_error,
+            )
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay * attempt)
+
+    logger.error(
+        "[%s] All %d attempts failed. Last error: %s",
+        node_type,
+        max_retries,
+        last_error,
+    )
+    return ""

@@ -16,7 +16,7 @@ import '../../widgets/error_banner.dart';
 import '../../widgets/loading_shimmer.dart';
 import '../../widgets/press_scale.dart';
 import '../../widgets/staggered_list.dart';
-import '../../widgets/cinematic_background.dart';
+import '../../widgets/paper_background.dart';
 import 'new_session_sheet.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -26,7 +26,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sessionsAsync = ref.watch(sessionListProvider);
 
-    return CinematicBackground(
+    return PaperBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
@@ -114,17 +114,17 @@ class DashboardScreen extends ConsumerWidget {
                       children: [
                         ShaderMask(
                           shaderCallback: (bounds) => const LinearGradient(
-                            colors: [Colors.white, AppColors.primary200, AppColors.accent500],
+                            colors: [AppColors.primary600, AppColors.accent600],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ).createShader(bounds),
                           child: Text(
                             'Welcome back.',
-                            style: GoogleFonts.roboto(
+                            style: GoogleFonts.kalam(
                               fontSize: 54,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                               height: 1.0,
-                              letterSpacing: -2.0,
+                              letterSpacing: -1.0,
                               color: Colors.white,
                             ),
                           ),
@@ -132,9 +132,9 @@ class DashboardScreen extends ConsumerWidget {
                         const SizedBox(height: 12),
                         Text(
                           'Resume your journey or explore something new.',
-                          style: GoogleFonts.robotoMono(
-                            fontSize: 14,
-                            color: AppColors.textMuted,
+                          style: GoogleFonts.kalam(
+                            fontSize: 18,
+                            color: AppColors.textSecondary,
                             letterSpacing: 0.5,
                           ),
                         ),
@@ -171,13 +171,13 @@ class DashboardScreen extends ConsumerWidget {
       ),
       floatingActionButton: sessionsAsync.value?.isEmpty == true
           ? FloatingActionButton.extended(
-              backgroundColor: AppColors.primary500,
+              backgroundColor: AppColors.accent600,
               onPressed: () => _handleNewSession(context, ref, sessionsAsync.value),
               icon: const Icon(Icons.add, color: Colors.white),
               label: const Text('New Subject', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : FloatingActionButton(
-              backgroundColor: AppColors.primary500,
+              backgroundColor: AppColors.accent600,
               onPressed: () => _handleNewSession(context, ref, sessionsAsync.value),
               child: const Icon(Icons.add, color: Colors.white),
             ),
@@ -289,8 +289,15 @@ class _SessionCardState extends State<_SessionCard> with SingleTickerProviderSta
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary700.withOpacity(0.15),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            )
+          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -327,10 +334,11 @@ class _SessionCardState extends State<_SessionCard> with SingleTickerProviderSta
                 children: [
                   Text(
                     session.topic,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.white,
+                    style: GoogleFonts.kalam(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 22,
+                      color: AppColors.textPrimary,
+                      height: 1.2,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -338,11 +346,11 @@ class _SessionCardState extends State<_SessionCard> with SingleTickerProviderSta
                     children: [
                       Text(
                         session.status.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 11,
+                        style: GoogleFonts.kalam(
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: _statusColor,
-                          letterSpacing: 0.8,
+                          letterSpacing: 1.0,
                         ),
                       ),
                       if (session.overallProgress > 0) ...[
@@ -372,13 +380,13 @@ class _SessionCardState extends State<_SessionCard> with SingleTickerProviderSta
               children: [
                 Text(
                   _timeAgo(session.createdAt),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textDisabled,
+                  style: GoogleFonts.kalam(
+                    fontSize: 14,
+                    color: AppColors.textMuted,
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, color: AppColors.textDisabled, size: 20),
+                const Icon(Icons.chevron_right, color: AppColors.textMuted, size: 20),
               ],
             ),
           ],

@@ -136,11 +136,11 @@ class _QuizViewState extends ConsumerState<QuizView> {
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? AppColors.primary500.withAlpha(20)
+                                    ? AppColors.primary500
                                     : AppColors.surface2,
                                 border: Border.all(
                                   color: isSelected
-                                      ? AppColors.primary500
+                                      ? AppColors.primary700
                                       : AppColors.border,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
@@ -156,7 +156,7 @@ class _QuizViewState extends ConsumerState<QuizView> {
                                           : Icons.radio_button_unchecked,
                                       key: ValueKey(isSelected),
                                       color: isSelected
-                                          ? AppColors.primary500
+                                          ? Colors.white
                                           : AppColors.textMuted,
                                       size: 20,
                                     ),
@@ -168,7 +168,7 @@ class _QuizViewState extends ConsumerState<QuizView> {
                                       q.options[optIndex],
                                       style: TextStyle(
                                         color: isSelected
-                                            ? AppColors.primary100
+                                            ? Colors.white
                                             : AppColors.textPrimary,
                                         fontSize: 14,
                                       ),

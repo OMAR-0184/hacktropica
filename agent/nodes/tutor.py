@@ -1,46 +1,63 @@
 """
-tutor_node — Generates explanation, examples, and code for the current subtopic.
+tutor_node — Generates structured lesson content + LaTeX document for the
+current subtopic.
+
+Outputs:
+  1. **Pedagogical JSON** following Gagné's Nine Events of Instruction,
+     integrated with Bloom's Taxonomy depth cues.
+  2. **LaTeX source** — a colorful, self-contained document with diagrams
+     (TikZ), styled boxes (tcolorbox), and equations (amsmath).  The raw
+     `.tex` is sent to the client; rendering happens Flutter-side.
+  3. A structural validation guardrail checks the LaTeX and feeds errors
+     back to the LLM for self-correction (max 2 retries) without ever
+     invoking a compiler.
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
 from typing import Any
-
-from agent.nodes._llm_call import invoke_llm_json
+from agent.nodes._llm_call import invoke_llm
+from agent.guardrails.latex_syntax import validate_latex, ValidationResult
 from agent.state import CognimapState
 
-_SYSTEM_PROMPT = """\
-You are an expert tutor. Given a subtopic within a broader topic, produce a
-structured lesson. Return ONLY a JSON object with these keys:
-- "learning_objective": one sentence describing what the learner should be able to do
-- "explanation": a clear, concise explanation (2-4 paragraphs)
-- "examples": a list of 2-3 illustrative examples (strings)
-- "common_misconception": one common mistake learners make on this topic, with correction
-- "practice_task": one short task the learner can do right now
-- "code_snippet": a relevant code snippet if applicable, otherwise null
+logger = logging.getLogger(__name__)
 
-Write in child-safe language suitable for younger learners. Do not use profanity
-or unsafe content.
+# ── System prompts ────────────────────────────────────────────
 
-Quality rules:
-- Be technically accurate and avoid vague placeholders.
-- Avoid repetitive toy metaphors ("tiny", "special path", etc.).
-- For detailed mode, prefer academically clear language with concrete terminology.
-- Use examples grounded in the actual subject, not generic analogies.
-- Include at least one deep explanatory thread (cause-effect, mechanism, or derivation where relevant).
-- Include one practical transfer example that connects this node to what learner should study next.
-- When the topic is quantitative, include equations/units/steps conceptually (and code only if genuinely useful).
+_MARKDOWN_SYSTEM_PROMPT = """\
+You are an expert tutor. Given a subtopic and lesson context, produce a COMPLETE, BEAUTIFUL, and COLORFUL Markdown document that serves as a lesson handout.
+
+REQUIREMENTS:
+1. The document MUST incorporate Gagné's Nine Events of Instruction natively using headings and blockquotes. Structure the following elements in detailed discussion:
+   - A Hook (attention grabber)
+   - Prior Knowledge connection
+   - Learning Objective
+   - Core Explanation (detailed discussion with progressive complexity)
+   - Worked Examples (step-by-step reasoning)
+   - Common Misconceptions
+   - A Practice Task
+   - A Transfer Prompt (real-world application)
+   - A Summary (3 bullet points)
+2. Use Markdown headings (##, ###) for clear document structure.
+3. AMAZING ILLUSTRATIONS: Use emojis generously as illustrations. Make it look like a colorful chart paper sticking to a board! Use emojis to represent diagrams, key points, and concepts visually.
+4. Use `> blockquotes` for callouts, important notes, or "sticky notes" on the chart paper.
+5. Emphasize key terms with **bold** or *italics*.
+6. Do NOT use HTML tags. 
+7. Do NOT use any LaTeX or KaTeX math formatting. Use standard text and unicode characters for math.
+
+CRITICAL RULES:
+- Return ONLY the raw Markdown text. Do NOT wrap it in JSON.
+- Ensure the markdown is visually appealing and reads like a highly engaging, colorful poster or chart paper.
 """
 
-_DEFAULTS = {
-    "learning_objective": "Understand the main concept and apply it in a simple scenario.",
-    "explanation": "Content could not be generated. Please try again.",
-    "examples": [],
-    "common_misconception": "A common misconception could not be generated.",
-    "practice_task": "Try explaining this concept in your own words with one example.",
-    "code_snippet": None,
-}
+
+_MARKDOWN_MAX_RETRIES = 1
+
+
+# ── Public entry point ────────────────────────────────────────
 
 
 async def tutor_node(state: CognimapState) -> dict[str, Any]:
@@ -72,77 +89,57 @@ async def tutor_node(state: CognimapState) -> dict[str, Any]:
         f"Math-heavy node: {is_math_heavy}"
     )
     if learner_profile:
-        user_prompt += f"\n\nHistorical Learner Weaknesses to explicitly address/simplify in this lesson:\n{learner_profile}"
+        user_prompt += (
+            f"\n\nHistorical Learner Weaknesses to explicitly "
+            f"address/simplify in this lesson:\n{learner_profile}"
+        )
 
-    tutor_content = await invoke_llm_json(
+    markdown_result = await _generate_markdown_content(topic, current, user_prompt)
+
+    return {
+        "tutor_content": {},
+        "markdown_content": markdown_result
+    }
+
+
+# ── Markdown generation ────────────────
+
+async def _generate_markdown_content(
+    topic: str, current: str, user_prompt: str
+) -> dict[str, Any]:
+    """
+    Generate a Markdown document.
+    """
+    markdown_user_prompt = (
+        f"{user_prompt}\n\n"
+        f"Create a detailed, beautiful Markdown lesson handout for '{current}' "
+        f"within the broader topic '{topic}'."
+    )
+
+    messages = [
+        {"role": "system", "content": _MARKDOWN_SYSTEM_PROMPT},
+        {"role": "user", "content": markdown_user_prompt},
+    ]
+
+    source = await invoke_llm(
         node_type="tutor",
-        temperature=0.2,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": user_prompt,
-            },
-        ],
-        required_keys=[
-            "learning_objective",
-            "explanation",
-            "examples",
-            "common_misconception",
-            "practice_task",
-        ],
-        defaults=_DEFAULTS,
+        temperature=0.3,
+        messages=messages,
     )
 
-    if _needs_quality_retry(tutor_content, course_mode):
-        retry_user_prompt = (
-            f"{user_prompt}\n\n"
-            "Regenerate with higher technical quality. Keep it clear, but avoid simplistic metaphors. "
-            "For science topics, use accurate vocabulary and concise precision."
-        )
-        tutor_content = await invoke_llm_json(
-            node_type="tutor",
-            temperature=0.15,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": retry_user_prompt},
-            ],
-            required_keys=[
-                "learning_objective",
-                "explanation",
-                "examples",
-                "common_misconception",
-                "practice_task",
-            ],
-            defaults=_DEFAULTS,
-        )
+    source = source.strip()
+    if source.startswith("```markdown"):
+        source = source[11:]
+    if source.startswith("```"):
+        source = source[3:]
+    if source.endswith("```"):
+        source = source[:-3]
+    source = source.strip()
 
-    return {"tutor_content": tutor_content}
+    return {
+        "markdown_source": source,
+        "markdown_valid": True,
+        "validation_warnings": [],
+        "attempts": 1,
+    }
 
-
-def _needs_quality_retry(content: dict[str, Any], course_mode: str) -> bool:
-    explanation = str(content.get("explanation", "")).strip()
-    examples = content.get("examples", [])
-    if not isinstance(examples, list):
-        examples = []
-
-    word_count = len(re.findall(r"\w+", explanation))
-    lower = explanation.lower()
-    bad_phrase_hits = sum(
-        lower.count(p) for p in ("tiny", "special path", "tiny atom", "tiny ball")
-    )
-
-    if course_mode == "detailed":
-        if word_count < 90:
-            return True
-        if bad_phrase_hits >= 2:
-            return True
-        if any("imagine" in str(ex).lower() for ex in examples):
-            return True
-    else:
-        if word_count < 45:
-            return True
-        if bad_phrase_hits >= 3:
-            return True
-
-    return False

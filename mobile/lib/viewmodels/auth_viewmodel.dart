@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../models/auth.dart';
+import '../services/cache_service.dart';
+import 'session_viewmodel.dart';
 
 /// Emits `true` when authenticated, `false` when not.
 final authViewModelProvider =
@@ -46,6 +48,13 @@ class AuthViewModel extends AsyncNotifier<bool> {
   Future<void> logout() async {
     final service = ref.read(authServiceProvider);
     await service.clearTokens();
+    
+    // Clear local JSON cache
+    await ref.read(cacheServiceProvider).clear();
+    
+    // Invalidate state to avoid showing previous user's data on next login
+    ref.invalidate(sessionListProvider);
+    
     state = const AsyncData(false);
   }
 

@@ -104,11 +104,30 @@ async def get_lesson(
     tutor_content, curator_content = parse_lesson_payload(lesson)
     is_remediation = target_node not in subtopics if target_node else False
 
+    # For Markdown, check if it's nested in the lesson_payload (saved as "markdown").
+    markdown_data = {}
+    if isinstance(lesson, dict):
+        markdown_data = lesson.get("markdown") or lesson.get("markdown_content") or {}
+    
+    # Also check live state for markdown_content (set by lesson_generator).
+    # ONLY do this if the requested node is the current active node.
+    if not markdown_data and target_node == current_node:
+        markdown_data = state_vals.get("markdown_content", {})
+        if not isinstance(markdown_data, dict):
+            markdown_data = {}
+
+    # Handle legacy nested dictionary bug in markdown_source
+    md_source = markdown_data.get("markdown_source")
+    if isinstance(md_source, dict):
+        md_source = md_source.get("markdown_source")
+        
     return LessonResponse(
         session_id=session_id,
         node_id=target_node,
         tutor_content=tutor_content,
         curator_content=curator_content,
+        markdown_source=md_source or None,
+        markdown_valid=bool(markdown_data.get("markdown_valid", False)),
         is_remediation=is_remediation,
         parent_node_id=node_meta.get("parent_node_id"),
         depth=node_meta.get("depth"),
@@ -164,18 +183,60 @@ def parse_lesson_payload(
 def _parse_tutor(raw: Any) -> TutorContent | None:
     if not isinstance(raw, dict):
         return None
+
+    # Core explanation: prefer new field, fall back to legacy.
+    core_expl = raw.get("core_explanation", "")
+    if isinstance(core_expl, dict):
+        core_expl = json.dumps(core_expl, indent=2)
+    elif not isinstance(core_expl, str):
+        core_expl = str(core_expl)
+
+    # Legacy explanation field.
     expl = raw.get("explanation", "")
     if isinstance(expl, dict):
         expl = json.dumps(expl, indent=2)
     elif not isinstance(expl, str):
         expl = str(expl)
+
+    # If core_explanation is empty, use legacy explanation.
+    if not core_expl.strip() and expl.strip():
+        core_expl = expl
+    # If legacy explanation is empty, derive from core_explanation.
+    if not expl.strip() and core_expl.strip():
+        expl = core_expl
+
+    # Worked examples: prefer new field, fall back to legacy 'examples'.
+    worked_examples = raw.get("worked_examples", [])
+    if not isinstance(worked_examples, list):
+        worked_examples = []
+    legacy_examples = raw.get("examples", [])
+    if not isinstance(legacy_examples, list):
+        legacy_examples = []
+    if not worked_examples and legacy_examples:
+        worked_examples = legacy_examples
+    if not legacy_examples and worked_examples:
+        legacy_examples = worked_examples
+
+    # Summary field.
+    summary = raw.get("summary", [])
+    if not isinstance(summary, list):
+        summary = [str(summary)] if summary else []
+
     return TutorContent(
-        learning_objective=str(raw.get("learning_objective", "")),
-        explanation=expl,
-        examples=raw.get("examples", []),
-        common_misconception=str(raw.get("common_misconception", "")),
-        practice_task=str(raw.get("practice_task", "")),
+        hook=str(raw.get("hook", "") or ""),
+        prior_knowledge=str(raw.get("prior_knowledge", "") or ""),
+        learning_objective=str(raw.get("learning_objective", "") or ""),
+        core_explanation=core_expl,
+        worked_examples=[str(e) for e in worked_examples],
+        visual_diagram_description=str(raw.get("visual_diagram_description", "") or ""),
+        common_misconception=str(raw.get("common_misconception", "") or ""),
+        practice_task=str(raw.get("practice_task", "") or ""),
+        transfer_prompt=str(raw.get("transfer_prompt", "") or ""),
+        summary=[str(s) for s in summary],
         code_snippet=raw.get("code_snippet"),
+        # Legacy fields.
+        explanation=expl,
+        examples=[str(e) for e in legacy_examples],
     )
 
 

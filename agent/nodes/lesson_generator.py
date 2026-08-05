@@ -16,10 +16,17 @@ async def lesson_generator_node(state: CognimapState) -> dict[str, Any]:
     
     current = state["current_node"]
     
+    # Extract Markdown content (generated inside tutor_node).
+    markdown_content = tutor_res.get("markdown_content", {})
+
+    tutor_content = tutor_res.get("tutor_content", {})
+    curator_content = curator_res.get("curator_content", {})
+
     lesson = {
         "subtopic": current,
-        "tutor_content": tutor_res.get("tutor_content", {}),
-        "curator_content": curator_res.get("curator_content", {}),
+        "tutor_content": tutor_content,
+        "curator_content": curator_content,
+        "markdown": markdown_content,
     }
 
     history = list(state.get("history", []))
@@ -29,7 +36,8 @@ async def lesson_generator_node(state: CognimapState) -> dict[str, Any]:
     # Since we combined them, return the merged lesson explicitly.
     return {
         "lesson": lesson, 
-        "tutor_content": tutor_res.get("tutor_content", {}),
-        "curator_content": curator_res.get("curator_content", {}),
+        "tutor_content": tutor_content,
+        "curator_content": curator_content,
+        "markdown_content": markdown_content,
         "history": history
     }

@@ -28,6 +28,7 @@ class LearningScreen extends ConsumerWidget {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 1200),
       builder: (_) => NodeDetailSheet(
         sessionId: sessionId,
         nodeMeta: node,
@@ -45,6 +46,7 @@ class LearningScreen extends ConsumerWidget {
           isScrollControlled: true,
           useSafeArea: true,
           backgroundColor: Colors.transparent,
+          constraints: const BoxConstraints(maxWidth: 1200),
           builder: (_) => BranchView(
             sessionId: sessionId,
             workflow: workflow,

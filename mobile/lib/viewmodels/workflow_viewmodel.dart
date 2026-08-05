@@ -17,6 +17,7 @@ final workflowViewModelProvider = AsyncNotifierProvider.family<
 class WorkflowViewModel extends FamilyAsyncNotifier<WorkflowSnapshot, String> {
   Timer? _pollTimer;
   Duration _pollInterval = AppConstants.pollIntervalInitial;
+  bool _isContinuing = false;
 
   @override
   Future<WorkflowSnapshot> build(String arg) async {
@@ -44,7 +45,11 @@ class WorkflowViewModel extends FamilyAsyncNotifier<WorkflowSnapshot, String> {
 
     if (snapshot.status == 'error' || snapshot.status == 'archived') {
       _stopPolling();
-    } else if (snapshot.nextAction == NextAction.wait || snapshot.isLoading) {
+      _isContinuing = false;
+    } else if (_isContinuing || snapshot.nextAction == NextAction.wait || snapshot.isLoading) {
+      if (snapshot.isLoading) {
+        _isContinuing = false;
+      }
       _scheduleNextPoll();
     } else {
       // Reset interval once we leave the wait state.
@@ -87,7 +92,7 @@ class WorkflowViewModel extends FamilyAsyncNotifier<WorkflowSnapshot, String> {
     String? traversalMode,
   }) async {
     final service = ref.read(learningServiceProvider);
-    await service.continueJourney(
+    final res = await service.continueJourney(
       arg,
       ContinueRequest(
         answers: answers,
@@ -95,6 +100,11 @@ class WorkflowViewModel extends FamilyAsyncNotifier<WorkflowSnapshot, String> {
         traversalMode: traversalMode,
       ),
     );
+    
+    if (res.enqueued || res.status == 'processing') {
+      _isContinuing = true;
+    }
+    
     await refresh();
   }
 }

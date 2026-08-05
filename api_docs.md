@@ -396,12 +396,19 @@ Response (`LessonResponse`):
   "session_id": "uuid",
   "node_id": "Intro to DSA",
   "tutor_content": {
+    "hook": "...",
+    "prior_knowledge": "...",
     "learning_objective": "...",
-    "explanation": "...",
-    "examples": ["..."],
+    "core_explanation": "...",
+    "worked_examples": ["..."],
+    "visual_diagram_description": "...",
     "common_misconception": "...",
     "practice_task": "...",
-    "code_snippet": null
+    "transfer_prompt": "...",
+    "summary": ["..."],
+    "code_snippet": null,
+    "explanation": "...",
+    "examples": ["..."]
   },
   "curator_content": {
     "articles": [{"title": "...", "url": "https://...", "description": "..."}],
@@ -409,6 +416,8 @@ Response (`LessonResponse`):
     "courses": [],
     "references": []
   },
+  "latex_source": "\\documentclass{article}...",
+  "latex_valid": true,
   "is_remediation": false,
   "parent_node_id": null,
   "depth": 0,

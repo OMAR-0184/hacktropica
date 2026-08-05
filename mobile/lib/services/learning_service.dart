@@ -71,6 +71,12 @@ class LearningService {
     return EvaluationResult.fromJson(res.data as Map<String, dynamic>);
   }
 
+  /// Fetch the detailed evaluation result for a past node.
+  Future<EvaluationResult> getEvaluationForNode(String sessionId, String nodeId) async {
+    final res = await _dio.get('/learning/$sessionId/evaluation/$nodeId');
+    return EvaluationResult.fromJson(res.data as Map<String, dynamic>);
+  }
+
   /// Unified continue endpoint — submit answers, select branch, or advance.
   Future<ContinueResponse> continueJourney(
     String sessionId,

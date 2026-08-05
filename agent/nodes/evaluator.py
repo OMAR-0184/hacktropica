@@ -168,8 +168,12 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
     )
     history = history[-_HISTORY_LIMIT:]
 
+    evaluations = dict(state.get("evaluations", {}))
+    evaluations[current] = evaluation
+
     return {
         "evaluation": evaluation,
+        "evaluations": evaluations,
         "scores": scores,
         "weak_areas": weak_areas,
         "mastery": mastery,

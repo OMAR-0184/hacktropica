@@ -7,13 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/theme.dart';
 import '../../models/lesson.dart';
+import '../../models/evaluation.dart';
 import '../../models/workflow.dart';
 import '../../services/learning_service.dart';
 import '../../widgets/error_banner.dart';
 import '../../widgets/loading_shimmer.dart';
 import '../../widgets/tutor_markdown.dart';
+import '../../widgets/tutor_chart_paper.dart';
+import '../../widgets/paper_background.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
 import 'quiz_view.dart';
+import 'quiz_statistics_view.dart';
 
 class NodeDetailSheet extends ConsumerStatefulWidget {
   final String sessionId;
@@ -60,17 +64,11 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
     final isCurrentNode = widget.workflow.currentNode == widget.nodeMeta.nodeId;
     final status = (widget.nodeMeta.status ?? 'locked').toUpperCase();
 
-    return Container(
-      height: MediaQuery.of(context).size.height,
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-      ),
-      child: Column(
-        children: [
+    return PaperBackground(
+      child: Container(
+        height: MediaQuery.of(context).size.height,
+        child: Column(
+          children: [
           // Drag handle
           Center(
             child: Container(
@@ -120,7 +118,8 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
             ),
           ),
           
-          if (widget.workflow.options.contains(widget.nodeMeta.nodeId))
+          if (widget.workflow.options.contains(widget.nodeMeta.nodeId) &&
+              widget.workflow.nextAction == NextAction.chooseBranch)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: ElevatedButton(
@@ -194,14 +193,13 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                 }
 
                 final lesson = snapshot.data!;
-                final tutor = lesson.tutorContent;
                 final curator = lesson.curatorContent;
 
                 return TabBarView(
                   controller: _tabCtrl,
                   children: [
                     // Tutor Tab
-                    _buildTutorTab(tutor),
+                    _buildTutorTab(lesson),
 
                     // Curator Tab
                     _buildCuratorTab(curator),
@@ -215,10 +213,11 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
           ),
         ],
       ),
-    );
+    ));
   }
 
-  Widget _buildTutorTab(TutorContent? tutor) {
+  Widget _buildTutorTab(LessonResponse lesson) {
+    final tutor = lesson.tutorContent;
     if (tutor == null) {
       return const Center(child: Text('No tutor content available.'));
     }
@@ -228,6 +227,31 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (tutor.hook.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: AppColors.primary500.withAlpha(20),
+                border: const Border(
+                  left: BorderSide(color: AppColors.primary500, width: 4),
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                tutor.hook,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          if (tutor.priorKnowledge.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: TutorMarkdown(data: "**Recall:** ${tutor.priorKnowledge}"),
+            ),
           if (tutor.learningObjective.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(16),
@@ -251,8 +275,8 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                 ),
               ),
             ),
-          TutorMarkdown(data: tutor.explanation),
-          if (tutor.examples.isNotEmpty) ...[
+          TutorMarkdown(data: tutor.coreExplanation.isNotEmpty ? tutor.coreExplanation : tutor.explanation),
+          if (tutor.workedExamples.isNotEmpty || tutor.examples.isNotEmpty) ...[
             const SizedBox(height: 32),
             const Text('Examples',
                 style: TextStyle(
@@ -260,10 +284,33 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
                     fontWeight: FontWeight.w600,
                     color: AppColors.textPrimary)),
             const SizedBox(height: 12),
-            for (final ex in tutor.examples) ...[
+            for (final ex in (tutor.workedExamples.isNotEmpty ? tutor.workedExamples : tutor.examples)) ...[
               TutorMarkdown(data: ex),
               const SizedBox(height: 12),
             ],
+          ],
+          if (tutor.visualDiagramDescription.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary500.withAlpha(30)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.image, color: AppColors.primary500, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(child: TutorMarkdown(data: tutor.visualDiagramDescription)),
+                ],
+              ),
+            ),
+          ],
+          if (lesson.markdownValid && lesson.markdownSource != null) ...[
+            const SizedBox(height: 16),
+            TutorChartPaper(markdownSource: lesson.markdownSource!),
           ],
           if (tutor.codeSnippet != null && tutor.codeSnippet!.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -308,6 +355,29 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
             const SizedBox(height: 12),
             TutorMarkdown(data: tutor.practiceTask),
           ],
+          if (tutor.transferPrompt.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            const Text('Apply Your Knowledge',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            TutorMarkdown(data: tutor.transferPrompt),
+          ],
+          if (tutor.summary.isNotEmpty) ...[
+            const SizedBox(height: 32),
+            const Text('Summary',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            for (final sum in tutor.summary) ...[
+              TutorMarkdown(data: "- $sum"),
+              const SizedBox(height: 8),
+            ],
+          ],
         ],
       ),
     );
@@ -342,11 +412,40 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
 
   Widget _buildQuizTab(bool isCurrentNode) {
     if (!isCurrentNode) {
+      if (widget.nodeMeta.status == 'mastered' || widget.nodeMeta.status == 'completed' || widget.nodeMeta.status == 'needs_remediation' || (widget.nodeMeta.attempts != null && widget.nodeMeta.attempts! > 0)) {
+        return FutureBuilder<EvaluationResult>(
+          future: ref.read(learningServiceProvider).getEvaluationForNode(widget.sessionId, widget.nodeMeta.nodeId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'Could not load quiz statistics for this node.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+              );
+            }
+            if (snapshot.hasData) {
+              return QuizStatisticsView(
+                evaluation: snapshot.data!,
+                nodeId: widget.nodeMeta.nodeId,
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        );
+      }
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Text(
-            'Quiz is only available for the currently active node.',
+            'Quiz is only available for the currently active node or completed nodes.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textMuted),
           ),

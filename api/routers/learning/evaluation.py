@@ -22,6 +22,7 @@ from api.services.evaluation_service import (
     get_quiz as _get_quiz,
     submit_evaluation as _submit_evaluation,
     get_evaluation_result as _get_evaluation_result,
+    get_evaluation_for_node as _get_evaluation_for_node,
 )
 from api.services.session_service import get_user_session
 
@@ -77,6 +78,18 @@ async def get_evaluation_result(
     """Get the evaluation result — alias endpoint."""
     await get_user_session(session_id, current_user.id, db)
     return await _get_evaluation_result(session_id)
+
+
+@router.get("/{session_id}/evaluation/{node_id}", response_model=EvaluationResult)
+async def get_evaluation_for_node(
+    session_id: str,
+    node_id: str,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the detailed evaluation result for a specific past node."""
+    await get_user_session(session_id, current_user.id, db)
+    return await _get_evaluation_for_node(session_id, node_id)
 
 
 # ── ARQ pool helper ──────────────────────────────────────────

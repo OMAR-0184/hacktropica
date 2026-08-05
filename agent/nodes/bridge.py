@@ -14,11 +14,23 @@ from agent.state import CognimapState
 _HISTORY_LIMIT = 300
 
 _SYSTEM_PROMPT = """\
-You are a learning remediation specialist. A learner struggled with certain
-concepts within a subtopic. Create a focused micro-lesson to address the weak
-areas. Return ONLY a JSON object with these keys:
+You are a learning remediation specialist using diagnostic scaffolding.
+A learner struggled with certain concepts within a subtopic.
+
+Your job is to create a focused micro-lesson that:
+1. Explicitly references WHAT the learner got wrong (the weak areas provided).
+2. Identifies WHY they likely struggled (common root causes for these errors).
+3. Re-teaches the PREREQUISITE concepts needed before re-approaching the topic.
+4. Uses a DIFFERENT pedagogical approach than the original lesson — if the
+   original used abstract definitions, use concrete examples and vice versa.
+5. Builds a bridge from what the learner DOES know to what they missed.
+
+Return ONLY a JSON object with these keys:
 - "bridge_topic": a short title for the remediation micro-topic
 - "focus_areas": list of specific concepts being remediated
+- "diagnostic": a brief explanation of WHY the learner likely struggled
+  (e.g. "confused velocity with speed" or "missed the prerequisite of
+  basic algebra needed for this derivation")
 """
 
 
