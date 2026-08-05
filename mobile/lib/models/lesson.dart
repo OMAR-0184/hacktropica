@@ -121,8 +121,8 @@ class LessonResponse {
   final String? nodeId;
   final TutorContent? tutorContent;
   final CuratorContent? curatorContent;
-  final String? latexSource;
-  final bool latexValid;
+  final String? markdownSource;
+  final bool markdownValid;
   final bool isRemediation;
   final String? parentNodeId;
   final int? depth;
@@ -136,8 +136,8 @@ class LessonResponse {
     this.nodeId,
     this.tutorContent,
     this.curatorContent,
-    this.latexSource,
-    this.latexValid = false,
+    this.markdownSource,
+    this.markdownValid = false,
     this.isRemediation = false,
     this.parentNodeId,
     this.depth,
@@ -159,8 +159,8 @@ class LessonResponse {
             ? CuratorContent.fromJson(
                 json['curator_content'] as Map<String, dynamic>)
             : null,
-        latexSource: json['latex_source'] as String?,
-        latexValid: json['latex_valid'] as bool? ?? false,
+        markdownSource: json['markdown_source'] as String?,
+        markdownValid: json['markdown_valid'] as bool? ?? false,
         isRemediation: json['is_remediation'] as bool? ?? false,
         parentNodeId: json['parent_node_id'] as String?,
         depth: json['depth'] as int?,

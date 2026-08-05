@@ -27,17 +27,11 @@ logger = logging.getLogger(__name__)
 
 # ── System prompts ────────────────────────────────────────────
 
-_LATEX_SYSTEM_PROMPT = """\
-You are an expert tutor and LaTeX document author. Given a subtopic and lesson context,
-produce a COMPLETE, COMPILABLE LaTeX document that serves as a beautiful, colorful lesson handout.
+_MARKDOWN_SYSTEM_PROMPT = """\
+You are an expert tutor. Given a subtopic and lesson context, produce a COMPLETE, BEAUTIFUL, and COLORFUL Markdown document that serves as a lesson handout.
 
 REQUIREMENTS:
-1. Use \\documentclass[12pt]{article}
-2. Use ONLY these packages: amsmath, amssymb, xcolor, tikz, tcolorbox, geometry,
-   enumitem, hyperref, fontenc, inputenc, booktabs, tabularx
-3. Define 4-5 custom colors using \\definecolor with attractive, modern tones
-   (e.g. deep blues, teals, warm oranges, purples — NOT plain red/green/blue).
-4. The document MUST incorporate Gagné's Nine Events of Instruction natively. Use `tcolorbox` or `\\section` to structure the following elements in detailed discussion:
+1. The document MUST incorporate Gagné's Nine Events of Instruction natively using headings and blockquotes. Structure the following elements in detailed discussion:
    - A Hook (attention grabber)
    - Prior Knowledge connection
    - Learning Objective
@@ -47,22 +41,20 @@ REQUIREMENTS:
    - A Practice Task
    - A Transfer Prompt (real-world application)
    - A Summary (3 bullet points)
-5. Include at least ONE amazing, highly descriptive TikZ diagram that illustrates the core concept in vivid detail.
-6. Use \\section, \\subsection for clear document structure.
-7. Use proper mathematical typesetting for ALL equations/formulas.
-8. The document must be SELF-CONTAINED — do not reference external files.
-9. Use \\color{} and \\textcolor{} generously to make headings and key terms visually amazing.
+2. Use Markdown headings (##, ###) for clear document structure.
+3. AMAZING ILLUSTRATIONS: Use emojis generously as illustrations. Make it look like a colorful chart paper sticking to a board! Use emojis to represent diagrams, key points, and concepts visually.
+4. Use `> blockquotes` for callouts, important notes, or "sticky notes" on the chart paper.
+5. Emphasize key terms with **bold** or *italics*.
+6. Do NOT use HTML tags. 
+7. Do NOT use any LaTeX or KaTeX math formatting. Use standard text and unicode characters for math.
 
 CRITICAL RULES:
-- Return ONLY the raw LaTeX source code. Do NOT wrap it in JSON. Do NOT wrap it in markdown backticks (e.g. ```latex). Just return the raw LaTeX string starting with \\documentclass.
-- Every \\begin{X} MUST have a matching \\end{X}.
-- Every opening { MUST have a closing }.
-- Every opening $ MUST have a closing $.
-- Do NOT leave any environment empty.
-- Do NOT use packages not listed above.
+- Return ONLY the raw Markdown text. Do NOT wrap it in JSON.
+- Ensure the markdown is visually appealing and reads like a highly engaging, colorful poster or chart paper.
 """
 
-_LATEX_MAX_RETRIES = 2
+
+_MARKDOWN_MAX_RETRIES = 1
 
 
 # ── Public entry point ────────────────────────────────────────
@@ -102,122 +94,52 @@ async def tutor_node(state: CognimapState) -> dict[str, Any]:
             f"address/simplify in this lesson:\n{learner_profile}"
         )
 
-    latex_result = await _generate_latex_content(topic, current, user_prompt)
+    markdown_result = await _generate_markdown_content(topic, current, user_prompt)
 
     return {
         "tutor_content": {},
-        "latex_content": latex_result,
+        "markdown_content": markdown_result
     }
 
 
-# ── LaTeX generation with validation guardrail ────────────────
+# ── Markdown generation ────────────────
 
-
-async def _generate_latex_content(
+async def _generate_markdown_content(
     topic: str, current: str, user_prompt: str
 ) -> dict[str, Any]:
     """
-    Generate a LaTeX document and validate it structurally.
-
-    If validation fails, feed the errors back to the LLM and retry
-    (up to ``_LATEX_MAX_RETRIES`` times).  On final failure, return
-    empty LaTeX with ``latex_valid=False``.
+    Generate a Markdown document.
     """
-    latex_user_prompt = (
+    markdown_user_prompt = (
         f"{user_prompt}\n\n"
-        f"Create a beautiful, colorful LaTeX lesson handout for '{current}' "
+        f"Create a detailed, beautiful Markdown lesson handout for '{current}' "
         f"within the broader topic '{topic}'."
     )
 
     messages = [
-        {"role": "system", "content": _LATEX_SYSTEM_PROMPT},
-        {"role": "user", "content": latex_user_prompt},
+        {"role": "system", "content": _MARKDOWN_SYSTEM_PROMPT},
+        {"role": "user", "content": markdown_user_prompt},
     ]
 
-    last_validation: ValidationResult | None = None
-
-    for attempt in range(1, _LATEX_MAX_RETRIES + 2):  # 1-indexed, up to max+1
-        latex_source = await invoke_llm(
-            node_type="tutor",
-            temperature=0.15,
-            messages=messages,
-        )
-
-        latex_source = latex_source.strip()
-        # Clean up markdown fences just in case
-        if latex_source.startswith("```latex"):
-            latex_source = latex_source[8:]
-        if latex_source.startswith("```"):
-            latex_source = latex_source[3:]
-        if latex_source.endswith("```"):
-            latex_source = latex_source[:-3]
-        latex_source = latex_source.strip()
-        if not latex_source:
-            logger.warning(
-                "[tutor/latex] Attempt %d: LLM returned empty LaTeX source.",
-                attempt,
-            )
-            if attempt <= _LATEX_MAX_RETRIES:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "The LaTeX source you returned was empty. "
-                            "Please generate a complete LaTeX document."
-                        ),
-                    }
-                )
-                continue
-            break
-
-        # ── Structural validation guardrail ───────────────────
-        validation = validate_latex(latex_source)
-        last_validation = validation
-
-        if validation.valid:
-            logger.info(
-                "[tutor/latex] LaTeX validated successfully on attempt %d "
-                "(warnings: %d).",
-                attempt,
-                len(validation.warnings),
-            )
-            return {
-                "latex_source": latex_source,
-                "latex_valid": True,
-                "validation_warnings": validation.warnings,
-                "attempts": attempt,
-            }
-
-        # Validation failed — feed errors back for retry.
-        logger.warning(
-            "[tutor/latex] Attempt %d: validation failed with %d error(s): %s",
-            attempt,
-            len(validation.errors),
-            "; ".join(validation.errors),
-        )
-        if attempt <= _LATEX_MAX_RETRIES:
-            messages.append(
-                {"role": "assistant", "content": latex_source}
-            )
-            messages.append(
-                {"role": "user", "content": validation.feedback_for_llm}
-            )
-
-    # All retries exhausted.
-    logger.error(
-        "[tutor/latex] All %d LaTeX attempts failed. Returning invalid.",
-        _LATEX_MAX_RETRIES + 1,
+    source = await invoke_llm(
+        node_type="tutor",
+        temperature=0.3,
+        messages=messages,
     )
-    return {
-        "latex_source": latex_source if "latex_source" in dir() else "",
-        "latex_valid": False,
-        "validation_errors": (
-            last_validation.errors if last_validation else ["Generation failed."]
-        ),
-        "validation_warnings": (
-            last_validation.warnings if last_validation else []
-        ),
-        "attempts": _LATEX_MAX_RETRIES + 1,
-    }
 
+    source = source.strip()
+    if source.startswith("```markdown"):
+        source = source[11:]
+    if source.startswith("```"):
+        source = source[3:]
+    if source.endswith("```"):
+        source = source[:-3]
+    source = source.strip()
+
+    return {
+        "markdown_source": source,
+        "markdown_valid": True,
+        "validation_warnings": [],
+        "attempts": 1,
+    }
 

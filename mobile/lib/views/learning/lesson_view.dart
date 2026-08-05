@@ -13,7 +13,7 @@ import '../../widgets/error_banner.dart';
 import '../../widgets/staggered_list.dart';
 
 import '../../widgets/tutor_markdown.dart';
-import '../../widgets/tutor_latex.dart';
+import '../../widgets/tutor_chart_paper.dart';
 import 'wait_view.dart';
 
 class LessonView extends ConsumerWidget {
@@ -171,12 +171,12 @@ class LessonView extends ConsumerWidget {
                     ),
                   ],
 
-                  // LaTeX Source
-                  if (lesson.latexValid && lesson.latexSource != null) ...[
+                  // Markdown Chart Paper
+                  if (lesson.markdownValid && lesson.markdownSource != null) ...[
                     const SizedBox(height: 32),
                     StaggeredFadeSlide(
                       index: staggerIndex++,
-                      child: TutorLatex(latexSource: lesson.latexSource!),
+                      child: TutorChartPaper(markdownSource: lesson.markdownSource!),
                     ),
                   ],
 

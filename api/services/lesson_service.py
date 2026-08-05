@@ -104,24 +104,30 @@ async def get_lesson(
     tutor_content, curator_content = parse_lesson_payload(lesson)
     is_remediation = target_node not in subtopics if target_node else False
 
-    # For LaTeX, check if it's nested in the lesson_payload (saved as "latex").
-    latex_data = {}
+    # For Markdown, check if it's nested in the lesson_payload (saved as "markdown").
+    markdown_data = {}
     if isinstance(lesson, dict):
-        latex_data = lesson.get("latex") or lesson.get("latex_content") or {}
+        markdown_data = lesson.get("markdown") or lesson.get("markdown_content") or {}
     
-    # Also check live state for latex_content (set by lesson_generator).
-    if not latex_data:
-        latex_data = state_vals.get("latex_content", {})
-        if not isinstance(latex_data, dict):
-            latex_data = {}
+    # Also check live state for markdown_content (set by lesson_generator).
+    # ONLY do this if the requested node is the current active node.
+    if not markdown_data and target_node == current_node:
+        markdown_data = state_vals.get("markdown_content", {})
+        if not isinstance(markdown_data, dict):
+            markdown_data = {}
 
+    # Handle legacy nested dictionary bug in markdown_source
+    md_source = markdown_data.get("markdown_source")
+    if isinstance(md_source, dict):
+        md_source = md_source.get("markdown_source")
+        
     return LessonResponse(
         session_id=session_id,
         node_id=target_node,
         tutor_content=tutor_content,
         curator_content=curator_content,
-        latex_source=latex_data.get("latex_source") or None,
-        latex_valid=bool(latex_data.get("latex_valid", False)),
+        markdown_source=md_source or None,
+        markdown_valid=bool(markdown_data.get("markdown_valid", False)),
         is_remediation=is_remediation,
         parent_node_id=node_meta.get("parent_node_id"),
         depth=node_meta.get("depth"),

@@ -26,4 +26,9 @@ class CacheService {
     await init();
     await _prefs?.remove(key);
   }
+
+  Future<void> clear() async {
+    await init();
+    await _prefs?.clear();
+  }
 }

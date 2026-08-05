@@ -55,11 +55,12 @@ class CognimapState(TypedDict, total=False):
     lesson: dict[str, Any]
     tutor_content: dict[str, Any]
     curator_content: dict[str, Any]
-    latex_content: dict[str, Any]
+    markdown_content: dict[str, Any]
 
     quiz: dict[str, Any]
 
     evaluation: dict[str, Any]
+    evaluations: dict[str, dict[str, Any]]
 
     remediation_count: int
 

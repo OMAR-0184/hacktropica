@@ -11,9 +11,9 @@ class AppConstants {
   );
 
   // ── Polling / Timing ─────────────────────────────────────
-  static const Duration pollIntervalInitial = Duration(milliseconds: 1500);
-  static const Duration pollIntervalMax = Duration(seconds: 8);
-  static const double pollBackoffMultiplier = 1.5;
+  static const Duration pollIntervalInitial = Duration(milliseconds: 1000);
+  static const Duration pollIntervalMax = Duration(seconds: 60);
+  static const double pollBackoffMultiplier = 2.0;
 
   // ── Session cap ──────────────────────────────────────────
   static const int maxActiveSessions = 5;

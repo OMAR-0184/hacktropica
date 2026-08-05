@@ -118,9 +118,9 @@ class LessonResponse(BaseModel):
     node_id: Optional[str] = None
     tutor_content: Optional[TutorContent] = None
     curator_content: Optional[CuratorContent] = None
-    # ── LaTeX content (raw source, validated structurally) ────
-    latex_source: Optional[str] = None
-    latex_valid: bool = False
+    # ── Markdown content (raw source) ────
+    markdown_source: Optional[str] = None
+    markdown_valid: bool = False
     # ── Node metadata ─────────────────────────────────────────
     is_remediation: bool = False
     parent_node_id: Optional[str] = None

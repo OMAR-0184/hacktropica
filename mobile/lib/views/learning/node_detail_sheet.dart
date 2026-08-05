@@ -7,14 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/theme.dart';
 import '../../models/lesson.dart';
+import '../../models/evaluation.dart';
 import '../../models/workflow.dart';
 import '../../services/learning_service.dart';
 import '../../widgets/error_banner.dart';
 import '../../widgets/loading_shimmer.dart';
 import '../../widgets/tutor_markdown.dart';
-import '../../widgets/tutor_latex.dart';
+import '../../widgets/tutor_chart_paper.dart';
+import '../../widgets/paper_background.dart';
 import '../../viewmodels/workflow_viewmodel.dart';
 import 'quiz_view.dart';
+import 'quiz_statistics_view.dart';
 
 class NodeDetailSheet extends ConsumerStatefulWidget {
   final String sessionId;
@@ -61,17 +64,11 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
     final isCurrentNode = widget.workflow.currentNode == widget.nodeMeta.nodeId;
     final status = (widget.nodeMeta.status ?? 'locked').toUpperCase();
 
-    return Container(
-      height: MediaQuery.of(context).size.height,
-      decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-      ),
-      child: Column(
-        children: [
+    return PaperBackground(
+      child: Container(
+        height: MediaQuery.of(context).size.height,
+        child: Column(
+          children: [
           // Drag handle
           Center(
             child: Container(
@@ -121,7 +118,8 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
             ),
           ),
           
-          if (widget.workflow.options.contains(widget.nodeMeta.nodeId))
+          if (widget.workflow.options.contains(widget.nodeMeta.nodeId) &&
+              widget.workflow.nextAction == NextAction.chooseBranch)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: ElevatedButton(
@@ -215,7 +213,7 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildTutorTab(LessonResponse lesson) {
@@ -310,9 +308,9 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
               ),
             ),
           ],
-          if (lesson.latexValid && lesson.latexSource != null) ...[
-            const SizedBox(height: 32),
-            TutorLatex(latexSource: lesson.latexSource!),
+          if (lesson.markdownValid && lesson.markdownSource != null) ...[
+            const SizedBox(height: 16),
+            TutorChartPaper(markdownSource: lesson.markdownSource!),
           ],
           if (tutor.codeSnippet != null && tutor.codeSnippet!.isNotEmpty) ...[
             const SizedBox(height: 24),
@@ -414,11 +412,40 @@ class _NodeDetailSheetState extends ConsumerState<NodeDetailSheet>
 
   Widget _buildQuizTab(bool isCurrentNode) {
     if (!isCurrentNode) {
+      if (widget.nodeMeta.status == 'mastered' || widget.nodeMeta.status == 'completed' || widget.nodeMeta.status == 'needs_remediation' || (widget.nodeMeta.attempts != null && widget.nodeMeta.attempts! > 0)) {
+        return FutureBuilder<EvaluationResult>(
+          future: ref.read(learningServiceProvider).getEvaluationForNode(widget.sessionId, widget.nodeMeta.nodeId),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'Could not load quiz statistics for this node.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+              );
+            }
+            if (snapshot.hasData) {
+              return QuizStatisticsView(
+                evaluation: snapshot.data!,
+                nodeId: widget.nodeMeta.nodeId,
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        );
+      }
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Text(
-            'Quiz is only available for the currently active node.',
+            'Quiz is only available for the currently active node or completed nodes.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textMuted),
           ),
