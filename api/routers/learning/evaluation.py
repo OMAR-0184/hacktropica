@@ -48,13 +48,15 @@ async def submit_evaluation(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit quiz answers for grading. Prefer /continue instead."""
-    arq_pool = await _get_arq_pool()
+    from api.services.bullmq_client import get_queue_client
+
+    queue = get_queue_client()
     db_session = await get_user_session(session_id, current_user.id, db)
     return await _submit_evaluation(
         session_id=session_id,
         db_session=db_session,
         answers=body.answers,
-        arq_pool=arq_pool,
+        queue=queue,
     )
 
 
@@ -90,14 +92,3 @@ async def get_evaluation_for_node(
     """Get the detailed evaluation result for a specific past node."""
     await get_user_session(session_id, current_user.id, db)
     return await _get_evaluation_for_node(session_id, node_id)
-
-
-# ── ARQ pool helper ──────────────────────────────────────────
-
-async def _get_arq_pool():
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from api.config import get_api_settings
-
-    settings = get_api_settings()
-    return await create_pool(RedisSettings.from_dsn(settings.redis_url))

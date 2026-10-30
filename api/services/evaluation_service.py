@@ -2,7 +2,7 @@
 Quiz retrieval and evaluation submission.
 
 Reads quiz/evaluation state from the LangGraph checkpoint and dispatches
-grading jobs to the ARQ worker.
+grading jobs through BullMQ.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from api.services.graph_helpers import snapshot_next_nodes
 
 async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
     """Fetch the generated quiz questions for the current subtopic."""
-    if db_session.status in ["initializing", "error", "archived"]:
+    if db_session.status in ["initializing", "running", "evaluating", "error", "archived"]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot fetch quiz while session is '{db_session.status}'.",
@@ -40,6 +40,11 @@ async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
     vals = snapshot.values
     current_node = vals.get("current_node", "")
     quiz = vals.get("quiz", {})
+    if not isinstance(quiz, dict) or quiz.get("node_id") != current_node:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Quiz is not ready for the current learning node.",
+        )
     raw_questions = quiz.get("questions", [])
     if not isinstance(raw_questions, list):
         raw_questions = []
@@ -74,9 +79,9 @@ async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
 
 
 async def submit_evaluation(
-    *, session_id: str, db_session, answers: list[int], arq_pool: Any
+    *, session_id: str, db_session, answers: list[int], queue: Any
 ) -> EvaluateResponse:
-    """Validate answers and dispatch grading to the ARQ worker."""
+    """Validate answers and dispatch grading through BullMQ."""
     if db_session.status != "ready":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -102,7 +107,16 @@ async def submit_evaluation(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         )
 
-    await arq_pool.enqueue_job("resume_learning_task", session_id, validated_answers)
+    current_node = str(snapshot.values.get("current_node", "") or "")
+    graph_nodes = snapshot.values.get("graph_nodes", {})
+    current_meta = graph_nodes.get(current_node, {}) if isinstance(graph_nodes, dict) else {}
+    current_attempt = current_meta.get("attempts", 0) if isinstance(current_meta, dict) else 0
+    await queue.enqueue_job(
+        "resume_learning_task",
+        session_id,
+        validated_answers,
+        job_id=f"evaluation:{session_id}:{current_node}:{current_attempt}:{validated_answers}",
+    )
 
     return EvaluateResponse(
         status="processing",

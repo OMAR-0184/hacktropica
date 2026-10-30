@@ -141,6 +141,10 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         "navigation_stack": navigation_stack,
         "journey_mode": "learn",
         "lesson": {},
+        "quiz": {},
+        "tutor_content": {},
+        "curator_content": {},
+        "markdown_content": {},
         "evaluation": {},
     }
 

@@ -49,13 +49,15 @@ async def continue_learning(
     db: AsyncSession = Depends(get_db),
 ):
     """Unified endpoint — submit answers and/or advance the journey."""
-    arq_pool = await _get_arq_pool()
+    from api.services.bullmq_client import get_queue_client
+
+    queue = get_queue_client()
     db_session = await get_user_session(session_id, current_user.id, db)
     return await _continue_journey(
         session_id=session_id,
         db_session=db_session,
         req=body,
-        arq_pool=arq_pool,
+        queue=queue,
     )
 
 
@@ -78,23 +80,14 @@ async def next_step(
     db: AsyncSession = Depends(get_db),
 ):
     """Advance to the next topic. Prefer /continue instead."""
-    arq_pool = await _get_arq_pool()
+    from api.services.bullmq_client import get_queue_client
+
+    queue = get_queue_client()
     db_session = await get_user_session(session_id, current_user.id, db)
     return await _advance_next_step(
         session_id=session_id,
         db_session=db_session,
         selected_node=body.selected_node,
         traversal_mode=body.traversal_mode,
-        arq_pool=arq_pool,
+        queue=queue,
     )
-
-
-# ── ARQ pool helper ──────────────────────────────────────────
-
-async def _get_arq_pool():
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from api.config import get_api_settings
-
-    settings = get_api_settings()
-    return await create_pool(RedisSettings.from_dsn(settings.redis_url))

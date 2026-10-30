@@ -49,7 +49,12 @@ async def get_current_user(
     redis = get_redis()
     cache_key = f"user:profile:{email}"
     
-    cached_user = await redis.get(cache_key)
+    cached_user = None
+    try:
+        cached_user = await redis.get(cache_key)
+    except Exception:
+        # Redis is a cache here; the database remains authoritative.
+        redis = None
     if cached_user:
         user_data = json.loads(cached_user)
         return User(**user_data)
@@ -61,7 +66,11 @@ async def get_current_user(
         raise credentials_exception
         
     user_data = {"id": user.id, "email": user.email, "username": user.username}
-    await redis.setex(cache_key, 3600, json.dumps(user_data))
+    if redis is not None:
+        try:
+            await redis.setex(cache_key, 3600, json.dumps(user_data))
+        except Exception:
+            pass
     
     return user
 
@@ -230,7 +239,10 @@ async def update_user_profile(
     await db.refresh(user)
     
     # Invalidate cache so the next request pulls fresh data
-    redis = get_redis()
-    await redis.delete(f"user:profile:{user.email}")
+    try:
+        redis = get_redis()
+        await redis.delete(f"user:profile:{user.email}")
+    except Exception:
+        pass
     
     return user

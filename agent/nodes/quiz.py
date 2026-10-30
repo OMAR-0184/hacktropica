@@ -77,6 +77,8 @@ def _build_system_prompt(question_count: int) -> str:
 
 
 def _build_lesson_context(tutor_content: Any) -> str:
+    if isinstance(tutor_content, str) and tutor_content.strip():
+        return tutor_content.strip()[:5000]
     if not isinstance(tutor_content, dict):
         return "No lesson content available."
 
@@ -142,7 +144,14 @@ async def quiz_node(state: CognimapState) -> dict[str, Any]:
         node_meta = {}
     question_count, numerical_target_ratio = determine_quiz_profile(node_meta, current)
 
-    lesson_summary = _build_lesson_context(lesson.get("tutor_content", {}))
+    tutor_context = lesson.get("tutor_content", {})
+    if not tutor_context:
+        markdown = lesson.get("markdown", {})
+        if isinstance(markdown, dict):
+            tutor_context = markdown.get("markdown_source", "")
+    lesson_summary = _build_lesson_context(tutor_context)
+    if not lesson_summary or lesson_summary == "No lesson content available.":
+        raise RuntimeError("Cannot generate a quiz without lesson content")
 
     quiz = await invoke_llm_json(
         node_type="quiz",
@@ -203,6 +212,10 @@ async def quiz_node(state: CognimapState) -> dict[str, Any]:
                 defaults=_DEFAULTS,
             )
 
+    raw_questions = quiz.get("questions", [])
+    if not isinstance(raw_questions, list) or len(raw_questions) < question_count:
+        raise RuntimeError("Quiz generation did not return the required question count")
+
     questions = normalize_mcq_questions(
         quiz.get("questions"),
         current,
@@ -212,6 +225,7 @@ async def quiz_node(state: CognimapState) -> dict[str, Any]:
     actual_numerical_ratio = compute_numerical_ratio(questions)
     return {
         "quiz": {
+            "node_id": current,
             "questions": questions,
             "question_count": question_count,
             "numerical_target_ratio": numerical_target_ratio,

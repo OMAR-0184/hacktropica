@@ -48,14 +48,16 @@ async def start_learning(
     db: AsyncSession = Depends(get_db),
 ):
     """Start a new asynchronous learning session."""
-    arq_pool = fastapi_req.app.state.arq_pool
+    from api.services.bullmq_client import get_queue_client
+
+    queue = get_queue_client()
     return await create_session(
         topic=request.topic,
         course_mode=request.course_mode,
         traversal_mode=request.traversal_mode,
         user=current_user,
         db=db,
-        arq_pool=arq_pool,
+        queue=queue,
     )
 
 

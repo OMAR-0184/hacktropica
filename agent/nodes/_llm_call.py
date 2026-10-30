@@ -76,7 +76,9 @@ async def invoke_llm_json(
     for attempt in range(1, max_retries + 1):
         try:
             llm = get_llm(node_type=node_type, temperature=temperature)
-            response = await llm.ainvoke(messages)
+            response = await asyncio.wait_for(
+                llm.ainvoke(messages), timeout=settings.llm_timeout_seconds
+            )
             content = response.content
             if isinstance(content, list):
                 raw = "".join(str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content).strip()
@@ -167,7 +169,9 @@ async def invoke_llm(
     for attempt in range(1, max_retries + 1):
         try:
             llm = get_llm(node_type=node_type, temperature=temperature)
-            response = await llm.ainvoke(messages)
+            response = await asyncio.wait_for(
+                llm.ainvoke(messages), timeout=settings.llm_timeout_seconds
+            )
             content = response.content
             if isinstance(content, list):
                 raw = "".join(str(c.get("text", "")) if isinstance(c, dict) else str(c) for c in content).strip()

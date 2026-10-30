@@ -73,6 +73,10 @@ async def orchestrator_node(state: CognimapState) -> dict[str, Any]:
     if evaluation and "user_answers" in evaluation and "score" not in evaluation:
         decision = "evaluator"
         reasoning = "User submitted quiz answers; routing to evaluator for grading."
+    elif isinstance(evaluation, dict) and evaluation.get("next_action"):
+        next_action = evaluation.get("next_action")
+        decision = "bridge" if next_action == "remediation" else "next"
+        reasoning = f"Following evaluator progression decision: {next_action}."
     elif is_mastered and current_node != "Intro to":
         decision = "next"
         reasoning = "Current node is mastered; routing to next."

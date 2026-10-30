@@ -1,7 +1,11 @@
 .env
+.env.aws
 .pytest_cache
 .ruff_cache
 .venv
+__pycache__/
+*.pyc
 cognimap_architecture.tex
 ui/
 .DS_Store
+scripts/results.json

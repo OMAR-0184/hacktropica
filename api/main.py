@@ -2,8 +2,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
-from arq import create_pool
-from arq.connections import RedisSettings
 
 from api.config import get_api_settings
 from api.database.core import Base, engine
@@ -12,6 +10,11 @@ from api.engine.runner import runtime
 from api.middleware.error_handler import global_exception_handler
 from api.middleware.rate_limiter import RateLimitMiddleware
 from api.redis import get_redis, close_redis_pool
+from api.services.bullmq_client import (
+    start_queue_client,
+    get_queue_client,
+    close_queue_client,
+)
 from api.routers import auth, search
 from api.routers.learning import router as learning_router
 
@@ -30,13 +33,12 @@ async def lifespan(app: FastAPI):
     # Initialize the GraphRuntime (pooled checkpointer + compiled graph)
     await runtime.start()
 
-    # Create the ARQ Redis pool
-    app.state.arq_pool = await create_pool(RedisSettings.from_dsn(_settings.redis_url))
+    start_queue_client()
 
     yield
 
     # Shutdown
-    await app.state.arq_pool.aclose()
+    await close_queue_client()
     await runtime.stop()
     await close_redis_pool()
 
@@ -79,7 +81,7 @@ async def health_check():
     Health check endpoint for load balancers and monitoring.
     Verifies connectivity to Postgres and Redis.
     """
-    health = {"status": "ok", "postgres": "ok", "redis": "ok"}
+    health = {"status": "ok", "postgres": "ok", "redis": "ok", "queue": "ok"}
 
     # Check Postgres
     try:
@@ -97,6 +99,12 @@ async def health_check():
         await redis.ping()
     except Exception as exc:
         health["redis"] = f"error: {exc}"
+        health["status"] = "degraded"
+
+    try:
+        await get_queue_client().ping()
+    except Exception:
+        health["queue"] = "unavailable"
         health["status"] = "degraded"
 
     status_code = 200 if health["status"] == "ok" else 503
