@@ -209,7 +209,7 @@ async def continue_journey(
         resolved_request_id = (
             request_id.strip()
             if request_id
-            else f"auto:{hashlib.sha1(fingerprint.encode()).hexdigest()[:20]}"
+            else f"auto:{hashlib.sha256(fingerprint.encode()).hexdigest()[:20]}"
         )
 
         # ── Idempotency check (v2 only) ──────────────────────
