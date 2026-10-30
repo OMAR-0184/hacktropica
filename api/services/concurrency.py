@@ -5,20 +5,23 @@ Provides distributed locking to prevent concurrent mutations on the same
 session, and an idempotency cache so duplicate continue-requests return
 the original response instead of re-executing.
 
-Falls back to in-process dicts when Redis is unreachable.
+Idempotency can fall back to a process-local cache; progression locks fail closed
+when Redis is unavailable because a local lock cannot protect multiple API workers.
 """
 
 from __future__ import annotations
 
 import json
+import secrets
 import time
 from typing import Any
+
+from fastapi import HTTPException, status
 
 from api.config import get_api_settings
 from api.redis import get_redis
 
 # ── In-process fallback stores (used when Redis is down) ──────
-_LOCAL_LOCKS: dict[str, float] = {}
 _LOCAL_IDEMPOTENCY: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
@@ -30,28 +33,37 @@ async def acquire_progression_lock(session_id: str) -> tuple[bool, str]:
     settings = get_api_settings()
     lock_key = f"journey:lock:{session_id}"
     ttl = max(1, int(settings.journey_orchestrator_lock_ttl_seconds))
+    token = secrets.token_urlsafe(24)
     redis = get_redis()
     try:
-        acquired = await redis.set(lock_key, "1", ex=ttl, nx=True)
+        acquired = await redis.set(lock_key, token, ex=ttl, nx=True)
         if acquired:
-            return True, lock_key
-    except Exception:
-        # Redis unavailable — fall back to in-process lock
-        now = time.time()
-        if _LOCAL_LOCKS.get(lock_key, 0.0) <= now:
-            _LOCAL_LOCKS[lock_key] = now + ttl
-            return True, lock_key
-        return False, lock_key
-    return False, lock_key
+            return True, f"{lock_key}|{token}"
+    except Exception as exc:
+        # A local lock cannot protect writes across API processes. Fail closed.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Progression locking is unavailable.",
+        ) from exc
+    return False, ""
 
 
 async def release_progression_lock(lock_key: str) -> None:
     """Release a previously acquired progression lock."""
+    if "|" not in lock_key:
+        return
+    key, token = lock_key.rsplit("|", 1)
     redis = get_redis()
     try:
-        await redis.delete(lock_key)
+        await redis.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then "
+            "return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            key,
+            token,
+        )
     except Exception:
-        _LOCAL_LOCKS.pop(lock_key, None)
+        return
 
 
 # ── Idempotency cache ────────────────────────────────────────

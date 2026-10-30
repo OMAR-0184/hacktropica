@@ -13,7 +13,6 @@ import os
 from typing import Any
 from pathlib import Path
 from pydantic import AliasChoices, Field
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from pydantic_settings import BaseSettings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -62,6 +61,7 @@ class Settings(BaseSettings):
 
     llm_max_retries: int = 3
     llm_retry_delay: float = 1.0
+    llm_timeout_seconds: float = 90.0
 
 
 @lru_cache(maxsize=1)
@@ -110,7 +110,15 @@ def get_llm(node_type: str = "root", temperature: float | None = None) -> Any:
             google_api_key=api_key,
         )
 
-    # Default provider: Hugging Face Inference Endpoint
+    # Optional provider: Hugging Face Inference Endpoint
+    try:
+        from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+    except ImportError as exc:
+        raise RuntimeError(
+            "Hugging Face models require the optional 'huggingface' extra. "
+            "Install with `pip install 'agent[huggingface]'`."
+        ) from exc
+
     llm = HuggingFaceEndpoint(
         repo_id=model_name,
         huggingfacehub_api_token=s.huggingface_api_token,

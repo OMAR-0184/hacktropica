@@ -3,12 +3,13 @@ Journey orchestration — the continue/advance/next-action state machine.
 
 This is the brain of the learner experience loop. It decides what the
 frontend should render next (quiz, branch selector, wait, etc.) and
-dispatches background work via ARQ when the learner advances.
+dispatches background work via BullMQ when the learner advances.
 """
 
 from __future__ import annotations
 
 import hashlib
+import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -136,7 +137,7 @@ async def continue_journey(
     session_id: str,
     db_session,
     req: ContinueRequest,
-    arq_pool: Any,
+    queue: Any,
 ) -> ContinueResponse:
     """
     Execute the next logical step in the learning journey.
@@ -247,7 +248,7 @@ async def continue_journey(
                 values=values,
                 waiting_on=waiting_on,
                 req=req,
-                arq_pool=arq_pool,
+                queue=queue,
                 journey_mode=journey_mode,
                 can_go_back=can_go_back,
                 previous_node=previous_node,
@@ -270,7 +271,7 @@ async def continue_journey(
                 values=values,
                 waiting_on=waiting_on,
                 req=req,
-                arq_pool=arq_pool,
+                queue=queue,
                 journey_mode=journey_mode,
                 can_go_back=can_go_back,
                 previous_node=previous_node,
@@ -325,7 +326,7 @@ async def advance_next_step(
     db_session,
     selected_node: str | None,
     traversal_mode: str | None,
-    arq_pool: Any,
+    queue: Any,
 ) -> dict:
     """Legacy advance logic preserved for backward compatibility."""
     lock_ok, lock_key = await acquire_progression_lock(session_id)
@@ -385,7 +386,11 @@ async def advance_next_step(
         )
 
         try:
-            await arq_pool.enqueue_job("advance_learning_task", session_id)
+            await queue.enqueue_job(
+                "advance_learning_task",
+                session_id,
+                job_id=f"legacy-next:{session_id}:{uuid.uuid4().hex}",
+            )
         except Exception as exc:
             try:
                 await set_next_choice(session_id, selected_node="")
@@ -413,7 +418,7 @@ async def _handle_evaluator_waiting(
     values,
     waiting_on,
     req,
-    arq_pool,
+    queue,
     journey_mode,
     can_go_back,
     previous_node,
@@ -486,8 +491,11 @@ async def _handle_evaluator_waiting(
         )
 
     try:
-        await arq_pool.enqueue_job(
-            "resume_learning_task", session_id, validated_answers
+        await queue.enqueue_job(
+            "resume_learning_task",
+            session_id,
+            validated_answers,
+            job_id=f"resume:{session_id}:{resolved_request_id}",
         )
     except Exception as exc:
         raise HTTPException(
@@ -529,7 +537,7 @@ async def _handle_advance(
     values,
     waiting_on,
     req,
-    arq_pool,
+    queue,
     journey_mode,
     can_go_back,
     previous_node,
@@ -605,7 +613,11 @@ async def _handle_advance(
     )
 
     try:
-        await arq_pool.enqueue_job("advance_learning_task", session_id)
+        await queue.enqueue_job(
+            "advance_learning_task",
+            session_id,
+            job_id=f"advance:{session_id}:{resolved_request_id}",
+        )
     except Exception as exc:
         try:
             await set_next_choice(session_id, selected_node="")

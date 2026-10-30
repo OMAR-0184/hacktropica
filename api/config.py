@@ -29,8 +29,8 @@ class APISettings(BaseSettings):
     environment: str = "development"
 
     # ── Database connection pool ──────────────────────────────
-    db_pool_size: int = 20
-    db_max_overflow: int = 30
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
     db_pool_timeout: int = 30
     db_pool_recycle: int = 1800
 
@@ -66,7 +66,7 @@ class APISettings(BaseSettings):
     journey_orchestrator_v2_rollout_percent: int = 0
 
     # Concurrency/idempotency protection for continue/advance APIs
-    journey_orchestrator_lock_ttl_seconds: int = 15
+    journey_orchestrator_lock_ttl_seconds: int = 360
     journey_orchestrator_idempotency_ttl_seconds: int = 300
 
     def is_production(self) -> bool:

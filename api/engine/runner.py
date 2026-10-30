@@ -84,7 +84,7 @@ async def _publish_to_redis(session_id: str, message: dict):
     """
     Publish a session event via the shared Redis pool.
 
-    Works from ANY process (ARQ workers included) because it uses
+    Works from ANY process because it uses
     the pooled connection, not the FastAPI ConnectionManager.
     """
     redis = get_redis()
@@ -150,7 +150,7 @@ async def run_learning_graph(
     traversal_mode: str = "dfs",
     learner_profile: str = "",
     journey_orchestrator_v2: bool = False,
-):
+) -> bool:
     """
     Async background runner for initializing the graph and streaming events.
     """
@@ -174,6 +174,7 @@ async def run_learning_graph(
 
     if success:
         await _update_session_status(session_id, "ready", current_phase="lesson")
+    return success
 
 
 async def get_current_state(session_id: str):
@@ -231,26 +232,36 @@ async def sync_state_to_db(session_id: str, config: dict, graph_instance=None):
             db_session = result.scalars().first()
             if db_session:
                 current_subtopic = values.get("current_node")
-                if current_subtopic:
+                graph_nodes = values.get("graph_nodes", {})
+                scores = values.get("scores", {})
+                catalog = values.get("node_catalog", {})
+                if isinstance(graph_nodes, dict):
                     existing_result = await db.execute(
-                        select(NodeState).filter(
-                            NodeState.session_id == session_id,
-                            NodeState.node_id == current_subtopic,
-                        )
+                        select(NodeState).filter(NodeState.session_id == session_id)
                     )
-                    existing_node = existing_result.scalars().first()
-                    if not existing_node:
-                        new_node = NodeState(
-                            session_id=session_id,
-                            node_id=current_subtopic,
-                            node_type="learning",
-                            status="active",
+                    existing = {
+                        node.node_id: node for node in existing_result.scalars().all()
+                    }
+                    for node_id, raw_meta in graph_nodes.items():
+                        metadata = raw_meta if isinstance(raw_meta, dict) else {}
+                        node = existing.get(node_id)
+                        if node is None:
+                            node_meta = catalog.get(node_id, {}) if isinstance(catalog, dict) else {}
+                            node = NodeState(
+                                session_id=session_id,
+                                node_id=str(node_id),
+                                node_type=str(node_meta.get("node_kind", "learning")),
+                            )
+                            db.add(node)
+                        node.status = (
+                            "active" if node_id == current_subtopic
+                            else str(metadata.get("status", "unlocked"))
                         )
-                        db.add(new_node)
+                        node.score = scores.get(node_id) if isinstance(scores, dict) else None
                 await db.commit()
 
 
-async def resume_graph_stream(session_id: str, user_answers: list):
+async def resume_graph_stream(session_id: str, user_answers: list) -> bool:
     await _update_session_status(session_id, "evaluating", current_phase="evaluator")
 
     graph, config = await _get_graph_and_config(session_id)
@@ -263,10 +274,18 @@ async def resume_graph_stream(session_id: str, user_answers: list):
     success = await stream_graph_events(session_id, graph, config, None)
 
     if success:
-        await _update_session_status(session_id, "ready", current_phase="evaluator")
+        snapshot = await get_current_state(session_id)
+        evaluation = (snapshot.values or {}).get("evaluation", {}) if snapshot else {}
+        if isinstance(evaluation, dict) and evaluation.get("next_action") == "completed":
+            await _update_session_status(
+                session_id, "completed", current_phase="completed"
+            )
+        else:
+            await _update_session_status(session_id, "ready", current_phase="evaluator")
+    return success
 
 
-async def advance_graph_stream(session_id: str):
+async def advance_graph_stream(session_id: str) -> bool:
     await _update_session_status(session_id, "running", current_phase="advancing")
 
     graph, config = await _get_graph_and_config(session_id)
@@ -283,6 +302,7 @@ async def advance_graph_stream(session_id: str):
             )
         else:
             await _update_session_status(session_id, "ready", current_phase="lesson")
+    return success
 
 
 async def _update_session_status(

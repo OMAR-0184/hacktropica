@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import get_api_settings
@@ -65,13 +65,29 @@ async def list_user_sessions(
     )
     sessions = result.scalars().all()
 
+    progress_result = await db.execute(
+        select(
+            NodeState.session_id,
+            func.count(NodeState.id),
+            func.sum(case((NodeState.status == "mastered", 1), else_=0)),
+        )
+        .join(DBSession, DBSession.id == NodeState.session_id)
+        .filter(DBSession.user_id == user_id, DBSession.status != "archived")
+        .group_by(NodeState.session_id)
+    )
+    progress_by_session = {
+        session_id: (mastered or 0) / count
+        for session_id, count, mastered in progress_result.all()
+        if count
+    }
+
     summaries = [
         SessionSummary(
             session_id=s.id,
             topic=s.topic or "",
             status=s.status or "unknown",
             created_at=s.created_at.isoformat() if s.created_at else "",
-            overall_progress=0.0,
+            overall_progress=round(progress_by_session.get(s.id, 0.0), 2),
         )
         for s in sessions
     ]
@@ -88,9 +104,9 @@ async def create_session(
     traversal_mode: str,
     user: User,
     db: AsyncSession,
-    arq_pool: Any,
+    queue: Any,
 ) -> StartResponse:
-    """Validate the topic, persist a new session, and dispatch to ARQ."""
+    """Validate the topic, persist a new session, and dispatch to BullMQ."""
     # ── Per-user session cap ──────────────────────────────────
     active_count_result = await db.execute(
         select(func.count(DBSession.id))
@@ -150,9 +166,9 @@ async def create_session(
     db.add(db_session)
     await db.commit()
 
-    # Dispatch to ARQ worker
+    # Dispatch the graph initialization job to BullMQ.
     try:
-        await arq_pool.enqueue_job(
+        await queue.enqueue_job(
             "start_learning_task",
             session_id,
             safe_topic,
@@ -160,6 +176,7 @@ async def create_session(
             traversal_mode,
             learner_profile,
             journey_v2,
+            job_id=f"start:{session_id}",
         )
     except Exception as exc:
         db_session.status = "error"

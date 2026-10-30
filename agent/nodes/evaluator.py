@@ -130,16 +130,16 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
         node_meta = dict(graph_nodes[current])
         node_meta["attempts"] = int(node_meta.get("attempts", 0)) + 1
         node_meta["best_score"] = max(float(node_meta.get("best_score", 0.0)), score)
-        if completed:
+        if completed and passed:
             node_meta["status"] = "mastered"
         graph_nodes[current] = node_meta
 
-    if parent_subtopic and parent_subtopic in graph_nodes and completed:
+    if parent_subtopic and parent_subtopic in graph_nodes and completed and passed:
         parent_meta = dict(graph_nodes[parent_subtopic])
         parent_meta["status"] = "mastered"
         graph_nodes[parent_subtopic] = parent_meta
 
-    if completed:
+    if completed and passed:
         mastery[current] = True
         if parent_subtopic:
             mastery[parent_subtopic] = True

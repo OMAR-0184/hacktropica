@@ -199,8 +199,13 @@ def build_continue_fingerprint(
     values: dict, waiting_on: list[str], req: ContinueRequest
 ) -> str:
     """SHA-256 digest that uniquely identifies a continue-request's intent."""
+    graph_nodes = values.get("graph_nodes", {})
+    current_node = str(values.get("current_node", "") or "")
+    current_meta = graph_nodes.get(current_node, {}) if isinstance(graph_nodes, dict) else {}
+    current_meta = current_meta if isinstance(current_meta, dict) else {}
     normalized = {
-        "current_node": str(values.get("current_node", "") or ""),
+        "current_node": current_node,
+        "node_attempt": safe_int(current_meta.get("attempts", 0), 0),
         "journey_mode": normalize_journey_mode(values.get("journey_mode")),
         "waiting_on": sorted(waiting_on),
         "answers": req.answers if isinstance(req.answers, list) else None,

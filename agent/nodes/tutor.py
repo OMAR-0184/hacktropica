@@ -128,6 +128,8 @@ async def _generate_markdown_content(
     )
 
     source = source.strip()
+    if not source:
+        raise RuntimeError("Tutor generation returned no lesson content")
     if source.startswith("```markdown"):
         source = source[11:]
     if source.startswith("```"):
@@ -138,7 +140,7 @@ async def _generate_markdown_content(
 
     return {
         "markdown_source": source,
-        "markdown_valid": True,
+        "markdown_valid": bool(source),
         "validation_warnings": [],
         "attempts": 1,
     }

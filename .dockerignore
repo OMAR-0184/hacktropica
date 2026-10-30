@@ -2,7 +2,11 @@
 .gitignore
 .venv
 __pycache__
+**/__pycache__
+node_modules
 *.pyc
 .pytest_cache
 .env
+.env.aws
+.env.aws.example
 tests

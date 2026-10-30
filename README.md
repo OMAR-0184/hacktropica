@@ -1,5 +1,12 @@
 # Cognimap
 
+## Local services
+
+The API and Python LangGraph runtime use Postgres. The API produces learning jobs directly to BullMQ in Redis, and a separate Python BullMQ worker consumes them. BullMQ queue data is persisted with Redis AOF and `noeviction`.
+
+Start the stack with `docker compose up --build`. Redis is configured with AOF persistence and `noeviction` because it stores queue state as well as cache data.
+
+The default agent uses Gemini. To select a Hugging Face model, install the optional provider with `pip install 'agent[huggingface]'`.
 
 # Architecture
 

@@ -41,19 +41,22 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         navigation_stack.append(current)
     previous_node = navigation_stack[-2] if len(navigation_stack) >= 2 else None
 
-    # Passing a remediation node should also master its parent subtopic.
+    # Only mark nodes mastered when the latest evaluation passed.
     parent_subtopic = (
         find_bridge_parent(history, current) if current not in subtopics else None
     )
-    mastery[current] = True
-    if parent_subtopic:
-        mastery[parent_subtopic] = True
+    evaluation = state.get("evaluation", {})
+    passed = isinstance(evaluation, dict) and bool(evaluation.get("passed", False))
+    if passed:
+        mastery[current] = True
+        if parent_subtopic:
+            mastery[parent_subtopic] = True
 
-    if current in graph_nodes:
+    if current in graph_nodes and passed:
         node_meta = dict(graph_nodes[current])
         node_meta["status"] = "mastered"
         graph_nodes[current] = node_meta
-    if parent_subtopic and parent_subtopic in graph_nodes:
+    if parent_subtopic and parent_subtopic in graph_nodes and passed:
         parent_meta = dict(graph_nodes[parent_subtopic])
         parent_meta["status"] = "mastered"
         graph_nodes[parent_subtopic] = parent_meta
@@ -110,6 +113,8 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
             meta = dict(graph_nodes[st])
             if mastery.get(st, False):
                 meta["status"] = "mastered"
+            elif st == current and not passed:
+                meta["status"] = "needs_review"
             else:
                 meta["status"] = "unlocked"
             graph_nodes[st] = meta
@@ -141,5 +146,9 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         "history": history,
         "remediation_count": 0,
         "lesson": {},
+        "quiz": {},
+        "tutor_content": {},
+        "curator_content": {},
+        "markdown_content": {},
         "evaluation": {},
     }

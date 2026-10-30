@@ -188,7 +188,10 @@ async def get_workflow_snapshot(
         recommendation_reason=action_payload.get("recommendation_reason"),
         recommendation_factors=action_payload.get("recommendation_factors", {}),
         lesson_ready=bool(vals.get("lesson")),
-        quiz_ready=bool(quiz.get("questions")),
+        quiz_ready=(
+            bool(quiz.get("questions"))
+            and quiz.get("node_id") == str(vals.get("current_node", "") or "")
+        ),
         evaluation_ready="score" in evaluation,
         quiz_question_count=int(
             quiz.get(

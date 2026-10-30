@@ -26,7 +26,7 @@ services:
       - "6381:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -50,11 +50,17 @@ services:
         condition: service_healthy
       cognimap-redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     restart: unless-stopped
 
   cognimap-worker:
     build: .
-    command: ["arq", "api.engine.worker.WorkerSettings"]
+    entrypoint: ["python", "-m", "api.engine.worker"]
     env_file:
       - .env
     environment:
@@ -67,9 +73,7 @@ services:
       cognimap-redis:
         condition: service_healthy
       cognimap-api:
-        condition: service_started
-    deploy:
-      replicas: 3
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
