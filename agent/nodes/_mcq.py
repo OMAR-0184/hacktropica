@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from agent.enums import EvaluationNextAction
 from agent.nodes._tree import find_bridge_parent
 
 MCQ_COUNT = 6
@@ -332,24 +333,32 @@ def determine_next_action(
             st for st in subtopics if not mastery.get(st, False) and st != current_node
         ]
         if passed:
-            return "next_topic" if remaining else "completed"
+            return (
+                EvaluationNextAction.NEXT_TOPIC.value
+                if remaining
+                else EvaluationNextAction.COMPLETED.value
+            )
         if remediation_count < max_remediation:
-            return "remediation"
-        return "next_topic" if remaining else "completed"
+            return EvaluationNextAction.REMEDIATION.value
+        return (
+            EvaluationNextAction.NEXT_TOPIC.value
+            if remaining
+            else EvaluationNextAction.COMPLETED.value
+        )
 
     if passed:
         idx = _current_subtopic_index(current_node, subtopics, history)
         if idx + 1 < len(subtopics):
-            return "next_topic"
-        return "completed"
+            return EvaluationNextAction.NEXT_TOPIC.value
+        return EvaluationNextAction.COMPLETED.value
 
     if remediation_count < max_remediation:
-        return "remediation"
+        return EvaluationNextAction.REMEDIATION.value
 
     idx = _current_subtopic_index(current_node, subtopics, history)
     if idx + 1 < len(subtopics):
-        return "next_topic"
-    return "completed"
+        return EvaluationNextAction.NEXT_TOPIC.value
+    return EvaluationNextAction.COMPLETED.value
 
 
 def grade_mcq(

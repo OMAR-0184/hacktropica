@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from agent.enums import JourneyMode, NodeKind, NodeStatus
 from agent.nodes._llm_call import invoke_llm_json
 from agent.nodes._tree import build_node_meta, infer_math_heavy
 from agent.state import CognimapState
@@ -78,7 +79,7 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
     )
 
     graph_nodes[bridge_topic] = {
-        "status": "unlocked",
+        "status": NodeStatus.UNLOCKED.value,
         "attempts": 0,
         "best_score": 0.0,
     }
@@ -92,7 +93,7 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         node_id=bridge_topic,
         parent_node_id=current,
         depth=parent_depth + 1,
-        node_kind="remediation",
+        node_kind=NodeKind.REMEDIATION.value,
         is_math_heavy=bool(parent_meta.get("is_math_heavy", infer_math_heavy(current))),
         parent_path=parent_path,
         is_expanded=True,
@@ -139,7 +140,7 @@ async def bridge_node_generator(state: CognimapState) -> dict[str, Any]:
         "history": history,
         "remediation_count": remediation_count,
         "navigation_stack": navigation_stack,
-        "journey_mode": "learn",
+        "journey_mode": JourneyMode.LEARN.value,
         "lesson": {},
         "quiz": {},
         "tutor_content": {},

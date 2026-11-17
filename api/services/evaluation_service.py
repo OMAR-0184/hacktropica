@@ -13,6 +13,7 @@ from fastapi import HTTPException, status
 
 from agent.nodes._mcq import validate_mcq_submission
 from api.engine.runner import get_current_state
+from api.enums import EvaluationNextAction, JourneyStepStatus, SessionStatus
 from api.schemas.learning import (
     QuizResponse,
     QuizQuestion,
@@ -27,7 +28,13 @@ from api.services.graph_helpers import snapshot_next_nodes
 
 async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
     """Fetch the generated quiz questions for the current subtopic."""
-    if db_session.status in ["initializing", "running", "evaluating", "error", "archived"]:
+    if db_session.status in [
+        SessionStatus.INITIALIZING.value,
+        SessionStatus.RUNNING.value,
+        SessionStatus.EVALUATING.value,
+        SessionStatus.ERROR.value,
+        SessionStatus.ARCHIVED.value,
+    ]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot fetch quiz while session is '{db_session.status}'.",
@@ -81,8 +88,8 @@ async def get_quiz(*, session_id: str, db_session) -> QuizResponse:
 async def submit_evaluation(
     *, session_id: str, db_session, answers: list[int], queue: Any
 ) -> EvaluateResponse:
-    """Validate answers and dispatch grading through BullMQ."""
-    if db_session.status != "ready":
+    """Validate answers and dispatch grading through the queue."""
+    if db_session.status != SessionStatus.READY.value:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot evaluate while session is '{db_session.status}'.",
@@ -119,7 +126,7 @@ async def submit_evaluation(
     )
 
     return EvaluateResponse(
-        status="processing",
+        status=JourneyStepStatus.PROCESSING.value,
         message="Evaluation submitted and processing in background.",
     )
 
@@ -165,7 +172,7 @@ def build_evaluation_result(values: dict[str, Any]) -> EvaluationResult:
         weak_areas=evaluation.get("weak_areas", []),
         feedback=evaluation.get("feedback", ""),
         passed=bool(evaluation.get("passed", False)),
-        next_action=str(evaluation.get("next_action", "next_topic")),
+        next_action=str(evaluation.get("next_action", EvaluationNextAction.NEXT_TOPIC.value)),
         question_results=evaluation.get("question_results", []),
         question_count=int(
             evaluation.get("question_count", evaluation.get("total_questions", 0))

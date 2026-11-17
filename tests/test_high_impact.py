@@ -12,7 +12,7 @@ from agent.nodes.quiz import _build_lesson_context
 from agent.nodes.evaluator import evaluator_node
 from api.main import app
 from api.services import evaluation_service
-from api.services.bullmq_client import BullMQClient
+from api.services.task_queue import TaskQueueClient, BullMQClient
 from api.database.model import User
 from api.schemas.learning import ContinueRequest
 from api.services.graph_helpers import build_continue_fingerprint
@@ -98,35 +98,26 @@ async def test_quiz_endpoint_rejects_stale_quiz(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_bullmq_client_adds_stable_job_with_retry_policy(monkeypatch) -> None:
-    import api.services.bullmq_client as bullmq_client
-
     observed = {}
 
-    class Queue:
-        def __init__(self, name, options):
-            observed["queue"] = name
-            observed["connection"] = options["connection"]
+    class MockPool:
+        async def enqueue_job(self, name, *args, _job_id=None, _queue_name=None):
+            observed.update(name=name, args=args, job_id=_job_id, queue_name=_queue_name)
+            return SimpleNamespace(job_id=_job_id)
 
-        async def getJob(self, job_id):
-            observed["job_id"] = job_id
-            return None
-
-        async def add(self, name, data, options):
-            observed.update(name=name, data=data, options=options)
-            return SimpleNamespace(id=options["jobId"])
-
-    monkeypatch.setattr(bullmq_client, "Queue", Queue)
     client = BullMQClient("redis://redis:6379/0")
+
+    async def mock_get_pool():
+        return MockPool()
+
+    monkeypatch.setattr(client, "_get_pool", mock_get_pool)
     job_id = await client.enqueue_job(
         "advance_learning_task", "session-1", job_id="advance:session-1:req-1"
     )
     assert job_id == observed["job_id"]
-    assert observed["queue"] == "cognimap-learning"
-    assert observed["connection"] == "redis://redis:6379/0"
+    assert observed["queue_name"] == "cognimap-learning"
     assert observed["name"] == "advance_learning_task"
-    assert observed["data"] == {"args": ["session-1"]}
-    assert observed["options"]["attempts"] == 3
-    assert observed["options"]["backoff"] == {"type": "exponential", "delay": 1000}
+    assert observed["args"] == ("session-1",)
 
 
 def test_idempotency_fingerprint_changes_between_node_attempts() -> None:

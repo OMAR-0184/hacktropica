@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.enums import JourneyMode, NodeKind, NodeStatus
 from agent.nodes._tree import build_node_meta, infer_math_heavy
 from agent.state import CognimapState
 
@@ -21,7 +22,7 @@ async def root_node(state: CognimapState) -> dict[str, Any]:
     topic_math_heavy = infer_math_heavy(topic)
     graph_nodes = {
         intro_node: {
-            "status": "unlocked",
+            "status": NodeStatus.UNLOCKED.value,
             "attempts": 0,
             "best_score": 0.0,
         }
@@ -31,7 +32,7 @@ async def root_node(state: CognimapState) -> dict[str, Any]:
             node_id=intro_node,
             parent_node_id=None,
             depth=0,
-            node_kind="intro",
+            node_kind=NodeKind.INTRO.value,
             is_math_heavy=topic_math_heavy,
             parent_path=[],
             is_expanded=False,
@@ -51,7 +52,7 @@ async def root_node(state: CognimapState) -> dict[str, Any]:
         "selected_next_node": "",
         "traversal_mode": traversal_mode,
         "navigation_stack": [intro_node],
-        "journey_mode": "learn",
+        "journey_mode": JourneyMode.LEARN.value,
         "journey_orchestrator_v2": bool(state.get("journey_orchestrator_v2", False)),
         "course_mode": course_mode,
         "learner_profile": state.get("learner_profile", ""),

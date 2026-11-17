@@ -16,6 +16,12 @@ from fastapi import HTTPException, status
 
 from agent.nodes._mcq import validate_mcq_submission
 from api.engine.runner import get_current_state, set_next_choice
+from api.enums import (
+    EvaluationNextAction,
+    JourneyAction,
+    JourneyStepStatus,
+    SessionStatus,
+)
 from api.schemas.learning import (
     ContinueRequest,
     ContinueResponse,
@@ -53,11 +59,15 @@ async def get_next_action(*, session_id: str, db_session) -> JourneyNextActionRe
 
     if not snapshot or not snapshot.values:
         session_status = db_session.status or "unknown"
-        if session_status in {"initializing", "running", "evaluating"}:
+        if session_status in {
+            SessionStatus.INITIALIZING.value,
+            SessionStatus.RUNNING.value,
+            SessionStatus.EVALUATING.value,
+        }:
             return JourneyNextActionResponse(
                 session_id=session_id,
-                action="wait",
-                status="waiting",
+                action=JourneyAction.WAIT.value,
+                status=JourneyStepStatus.WAITING.value,
                 message=f"Session is '{session_status}'. Wait for readiness.",
                 required_input=None,
             )
@@ -79,11 +89,11 @@ async def get_next_action(*, session_id: str, db_session) -> JourneyNextActionRe
 async def get_journey_choices(*, session_id: str, db_session) -> JourneyChoicesResponse:
     """Return the currently available branch choices for graph traversal."""
     if db_session.status in [
-        "initializing",
-        "running",
-        "evaluating",
-        "archived",
-        "error",
+        SessionStatus.INITIALIZING.value,
+        SessionStatus.RUNNING.value,
+        SessionStatus.EVALUATING.value,
+        SessionStatus.ARCHIVED.value,
+        SessionStatus.ERROR.value,
     ]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -163,31 +173,35 @@ async def continue_journey(
             )
 
         # ── Status guards ─────────────────────────────────────
-        if session_status in {"initializing", "running", "evaluating"}:
+        if session_status in {
+            SessionStatus.INITIALIZING.value,
+            SessionStatus.RUNNING.value,
+            SessionStatus.EVALUATING.value,
+        }:
             return ContinueResponse(
                 session_id=session_id,
-                status="waiting",
-                action="wait",
+                status=JourneyStepStatus.WAITING.value,
+                action=JourneyAction.WAIT.value,
                 message=f"Session is '{session_status}'. Wait until it becomes 'ready'.",
                 enqueued=False,
                 request_status="accepted",
                 request_id=request_id or None,
             )
-        if session_status == "completed":
+        if session_status == SessionStatus.COMPLETED.value:
             return ContinueResponse(
                 session_id=session_id,
-                status="completed",
-                action="completed",
+                status=JourneyStepStatus.COMPLETED.value,
+                action=JourneyAction.COMPLETED.value,
                 message="Learning journey is completed.",
                 enqueued=False,
                 request_status="accepted",
                 request_id=request_id or None,
             )
-        if session_status in {"error", "archived"}:
+        if session_status in {SessionStatus.ERROR.value, SessionStatus.ARCHIVED.value}:
             return ContinueResponse(
                 session_id=session_id,
-                status="blocked",
-                action="blocked",
+                status=JourneyStepStatus.BLOCKED.value,
+                action=JourneyAction.BLOCKED.value,
                 message=f"Session is '{session_status}' and cannot continue.",
                 enqueued=False,
                 request_status="accepted",
@@ -228,8 +242,8 @@ async def continue_journey(
                     return ContinueResponse(**cached)
                 return ContinueResponse(
                     session_id=session_id,
-                    status="waiting",
-                    action="wait",
+                    status=JourneyStepStatus.WAITING.value,
+                    action=JourneyAction.WAIT.value,
                     message="A matching request is already in progress.",
                     enqueued=False,
                     request_status="in_progress",
@@ -261,7 +275,7 @@ async def continue_journey(
         evaluation = values.get("evaluation", {})
         completed_eval = (
             isinstance(evaluation, dict)
-            and evaluation.get("next_action") == "completed"
+            and evaluation.get("next_action") == EvaluationNextAction.COMPLETED.value
         )
         can_advance = bool({"next", "bridge"} & set(waiting_on)) or completed_eval
 
@@ -290,7 +304,7 @@ async def continue_journey(
         )
         response_obj = ContinueResponse(
             session_id=session_id,
-            status="blocked",
+            status=JourneyStepStatus.BLOCKED.value,
             action=action_payload["action"],
             message=action_payload["message"],
             journey_mode=action_payload["journey_mode"],
@@ -332,12 +346,12 @@ async def advance_next_step(
     lock_ok, lock_key = await acquire_progression_lock(session_id)
     if not lock_ok:
         return {
-            "status": "processing",
+            "status": JourneyStepStatus.PROCESSING.value,
             "message": "A progression request is already in progress.",
             "request_status": "in_progress",
         }
     try:
-        if db_session.status != "ready":
+        if db_session.status != SessionStatus.READY.value:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Cannot advance while session is '{db_session.status}'.",
@@ -351,7 +365,7 @@ async def advance_next_step(
         evaluation = snapshot.values.get("evaluation", {})
         completed_eval = (
             isinstance(evaluation, dict)
-            and evaluation.get("next_action") == "completed"
+            and evaluation.get("next_action") == EvaluationNextAction.COMPLETED.value
         )
         if not ({"next", "bridge"} & set(waiting_on)) and not completed_eval:
             raise HTTPException(
@@ -458,8 +472,8 @@ async def _handle_evaluator_waiting(
             message = f"{message} Next node '{selected_node}' has been saved."
         response_obj = ContinueResponse(
             session_id=session_id,
-            status="needs_input",
-            action="take_quiz",
+            status=JourneyStepStatus.NEEDS_INPUT.value,
+            action=JourneyAction.TAKE_QUIZ.value,
             message=message,
             journey_mode=journey_mode,
             can_go_back=can_go_back,
@@ -508,8 +522,8 @@ async def _handle_evaluator_waiting(
         message = f"{message} Next node '{selected_node}' is queued."
     response_obj = ContinueResponse(
         session_id=session_id,
-        status="processing",
-        action="submit_evaluation",
+        status=JourneyStepStatus.PROCESSING.value,
+        action=JourneyAction.SUBMIT_EVALUATION.value,
         message=message,
         journey_mode=journey_mode,
         can_go_back=can_go_back,
@@ -559,8 +573,8 @@ async def _handle_advance(
     if selected_node and "next" not in waiting_on:
         response_obj = ContinueResponse(
             session_id=session_id,
-            status="needs_input",
-            action="advance",
+            status=JourneyStepStatus.NEEDS_INPUT.value,
+            action=JourneyAction.ADVANCE.value,
             message="selected_node is not applicable for remediation-only advancement.",
             journey_mode=journey_mode,
             can_go_back=can_go_back,
@@ -581,8 +595,8 @@ async def _handle_advance(
         if selected_node and selected_node not in options:
             response_obj = ContinueResponse(
                 session_id=session_id,
-                status="needs_input",
-                action="choose_branch",
+                status=JourneyStepStatus.NEEDS_INPUT.value,
+                action=JourneyAction.CHOOSE_BRANCH.value,
                 message="selected_node is not in available options.",
                 journey_mode=journey_mode,
                 can_go_back=can_go_back,
@@ -630,8 +644,8 @@ async def _handle_advance(
 
     response_obj = ContinueResponse(
         session_id=session_id,
-        status="processing",
-        action="advance",
+        status=JourneyStepStatus.PROCESSING.value,
+        action=JourneyAction.ADVANCE.value,
         message="Advancing to the next step.",
         journey_mode=journey_mode,
         can_go_back=can_go_back,

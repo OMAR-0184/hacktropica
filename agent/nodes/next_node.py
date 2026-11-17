@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.enums import JourneyMode, NodeStatus, TraversalMode
 from agent.nodes._tree import find_bridge_parent
 from agent.state import CognimapState
 
@@ -54,11 +55,11 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
 
     if current in graph_nodes and passed:
         node_meta = dict(graph_nodes[current])
-        node_meta["status"] = "mastered"
+        node_meta["status"] = NodeStatus.MASTERED.value
         graph_nodes[current] = node_meta
     if parent_subtopic and parent_subtopic in graph_nodes and passed:
         parent_meta = dict(graph_nodes[parent_subtopic])
-        parent_meta["status"] = "mastered"
+        parent_meta["status"] = NodeStatus.MASTERED.value
         graph_nodes[parent_subtopic] = parent_meta
 
     active_frontier = [
@@ -112,11 +113,11 @@ async def next_node_generator(state: CognimapState) -> dict[str, Any]:
         if st in graph_nodes:
             meta = dict(graph_nodes[st])
             if mastery.get(st, False):
-                meta["status"] = "mastered"
+                meta["status"] = NodeStatus.MASTERED.value
             elif st == current and not passed:
-                meta["status"] = "needs_review"
+                meta["status"] = NodeStatus.NEEDS_REVIEW.value
             else:
-                meta["status"] = "unlocked"
+                meta["status"] = NodeStatus.UNLOCKED.value
             graph_nodes[st] = meta
 
     if next_subtopic != current:

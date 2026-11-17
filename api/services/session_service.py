@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.config import get_api_settings
 from api.database.core import SessionLocal
 from api.database.models import User, Session as DBSession, NodeState
+from api.enums import NodeStatus, SessionPhase, SessionStateMachine, SessionStatus
 from api.topic_validation import validate_learning_topic_with_moderation
 from api.schemas.learning import (
     StartResponse,
@@ -51,14 +52,14 @@ async def list_user_sessions(
     count_result = await db.execute(
         select(func.count(DBSession.id))
         .filter(DBSession.user_id == user_id)
-        .filter(DBSession.status != "archived")
+        .filter(DBSession.status != SessionStatus.ARCHIVED.value)
     )
     total = count_result.scalar() or 0
 
     result = await db.execute(
         select(DBSession)
         .filter(DBSession.user_id == user_id)
-        .filter(DBSession.status != "archived")
+        .filter(DBSession.status != SessionStatus.ARCHIVED.value)
         .order_by(desc(DBSession.created_at))
         .offset(offset)
         .limit(limit)
@@ -69,10 +70,10 @@ async def list_user_sessions(
         select(
             NodeState.session_id,
             func.count(NodeState.id),
-            func.sum(case((NodeState.status == "mastered", 1), else_=0)),
+            func.sum(case((NodeState.status == NodeStatus.MASTERED.value, 1), else_=0)),
         )
         .join(DBSession, DBSession.id == NodeState.session_id)
-        .filter(DBSession.user_id == user_id, DBSession.status != "archived")
+        .filter(DBSession.user_id == user_id, DBSession.status != SessionStatus.ARCHIVED.value)
         .group_by(NodeState.session_id)
     )
     progress_by_session = {
@@ -111,7 +112,15 @@ async def create_session(
     active_count_result = await db.execute(
         select(func.count(DBSession.id))
         .filter(DBSession.user_id == user.id)
-        .filter(DBSession.status.notin_(["archived", "completed", "error"]))
+        .filter(
+            DBSession.status.notin_(
+                [
+                    SessionStatus.ARCHIVED.value,
+                    SessionStatus.COMPLETED.value,
+                    SessionStatus.ERROR.value,
+                ]
+            )
+        )
     )
     active_count = active_count_result.scalar() or 0
     if active_count >= _settings.max_active_sessions_per_user:
@@ -159,14 +168,14 @@ async def create_session(
         user_id=user.id,
         topic=safe_topic,
         langgraph_thread_id=session_id,
-        status="initializing",
-        current_phase="root",
+        status=SessionStatus.INITIALIZING.value,
+        current_phase=SessionPhase.ROOT.value,
         course_mode=course_mode,
     )
     db.add(db_session)
     await db.commit()
 
-    # Dispatch the graph initialization job to BullMQ.
+    # Dispatch the graph initialization job to the queue.
     try:
         await queue.enqueue_job(
             "start_learning_task",
@@ -179,7 +188,7 @@ async def create_session(
             job_id=f"start:{session_id}",
         )
     except Exception as exc:
-        db_session.status = "error"
+        db_session.status = SessionStatus.ERROR.value
         db_session.error_message = "Unable to enqueue learning job. Please try again."
         try:
             await db.commit()
@@ -216,10 +225,13 @@ async def get_session_status(
 
 
 async def archive_session(db_session: DBSession, db: AsyncSession) -> dict:
-    """Soft-delete a session by marking it as archived."""
-    db_session.status = "archived"
+    """Soft-delete a session by marking it as archived with transition validation."""
+    new_status = SessionStateMachine.transition(
+        db_session.status, SessionStatus.ARCHIVED, session_id=db_session.id
+    )
+    db_session.status = new_status.value
     await db.commit()
-    return {"status": "archived", "session_id": db_session.id}
+    return {"status": SessionStatus.ARCHIVED.value, "session_id": db_session.id}
 
 
 # ── WebSocket access ─────────────────────────────────────────

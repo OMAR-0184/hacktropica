@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypedDict
 
+from agent.enums import (
+    JourneyMode,
+    NodeKind,
+    NodeStatus,
+    TraversalMode,
+)
+
 
 class SubtopicMeta(TypedDict, total=False):
     """Metadata tracked per subtopic node."""
 
-    status: str
+    status: NodeStatus | str
     attempts: int
     best_score: float
 
@@ -17,7 +24,7 @@ class NodeCatalogEntry(TypedDict, total=False):
     node_id: str
     parent_node_id: str | None
     depth: int
-    node_kind: Literal["intro", "concept", "advanced", "remediation"]
+    node_kind: NodeKind | Literal["intro", "concept", "advanced", "remediation"]
     path_from_root: list[str]
     is_math_heavy: bool
     is_expanded: bool
@@ -41,9 +48,9 @@ class CognimapState(TypedDict, total=False):
     current_path: list[str]
     available_choices: list[str]
     selected_next_node: str
-    traversal_mode: Literal["bfs", "dfs"]
+    traversal_mode: TraversalMode | Literal["bfs", "dfs"]
     navigation_stack: list[str]
-    journey_mode: Literal["learn", "review"]
+    journey_mode: JourneyMode | Literal["learn", "review"]
     journey_orchestrator_v2: bool
 
     history: list[dict[str, Any]]
@@ -66,3 +73,4 @@ class CognimapState(TypedDict, total=False):
 
     orchestrator_reasoning: str
     orchestrator_history: list[dict[str, Any]]
+

@@ -3,6 +3,7 @@ from sqlalchemy import Column, ForeignKey, Index, Integer, String, DateTime, Flo
 from sqlalchemy.orm import relationship
 
 from api.database.core import Base
+from api.enums import SessionStatus, SessionPhase, NodeStatus, SessionStateMachine
 
 
 def utc_now():
@@ -31,9 +32,9 @@ class Session(Base):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     topic = Column(String, index=True)
-    status = Column(String, default="initializing")
+    status = Column(String, default=SessionStatus.INITIALIZING.value)
     error_message = Column(String, nullable=True)
-    current_phase = Column(String, default="root")
+    current_phase = Column(String, default=SessionPhase.ROOT.value)
     course_mode = Column(String, default="detailed")
     langgraph_thread_id = Column(String, unique=True, index=True)
     created_at = Column(DateTime, default=utc_now)
@@ -41,6 +42,16 @@ class Session(Base):
 
     user = relationship("User", back_populates="sessions")
     nodes = relationship("NodeState", back_populates="session")
+
+    @property
+    def parsed_status(self) -> SessionStatus | None:
+        try:
+            return SessionStatus(self.status) if self.status else None
+        except ValueError:
+            return None
+
+    def can_transition_to(self, new_status: str | SessionStatus) -> bool:
+        return SessionStateMachine.can_transition(self.status, new_status)
 
 
 class NodeState(Base):
@@ -54,9 +65,16 @@ class NodeState(Base):
     session_id = Column(String, ForeignKey("sessions.id"))
     node_id = Column(String)
     node_type = Column(String)
-    status = Column(String)
+    status = Column(String, default=NodeStatus.UNLOCKED.value)
     content = Column(JSON, nullable=True)
     score = Column(Float, nullable=True)
     created_at = Column(DateTime, default=utc_now)
 
     session = relationship("Session", back_populates="nodes")
+
+    @property
+    def parsed_status(self) -> NodeStatus | None:
+        try:
+            return NodeStatus(self.status) if self.status else None
+        except ValueError:
+            return None

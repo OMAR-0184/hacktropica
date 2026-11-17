@@ -49,7 +49,7 @@ async def continue_learning(
     db: AsyncSession = Depends(get_db),
 ):
     """Unified endpoint — submit answers and/or advance the journey."""
-    from api.services.bullmq_client import get_queue_client
+    from api.services.task_queue import get_queue_client
 
     queue = get_queue_client()
     db_session = await get_user_session(session_id, current_user.id, db)
@@ -80,7 +80,7 @@ async def next_step(
     db: AsyncSession = Depends(get_db),
 ):
     """Advance to the next topic. Prefer /continue instead."""
-    from api.services.bullmq_client import get_queue_client
+    from api.services.task_queue import get_queue_client
 
     queue = get_queue_client()
     db_session = await get_user_session(session_id, current_user.id, db)
