@@ -19,6 +19,13 @@ from agent.graph import build_graph
 from api.config import get_api_settings
 from api.database.core import SessionLocal
 from api.database.models import Session, NodeState
+from api.enums import (
+    EvaluationNextAction,
+    NodeStatus,
+    SessionPhase,
+    SessionStateMachine,
+    SessionStatus,
+)
 from api.redis import get_redis
 
 from sqlalchemy import select
@@ -124,13 +131,13 @@ async def stream_graph_events(
     except asyncio.CancelledError:
         err_msg = "Task was cancelled (likely a job timeout)."
         logger.error(f"Graph execution cancelled: {session_id}")
-        await _update_session_status(session_id, "error", error_message=err_msg)
+        await _update_session_status(session_id, SessionStatus.ERROR, error_message=err_msg)
         await _publish_to_redis(session_id, {"type": "error", "message": err_msg})
         raise
     except Exception as e:
         err_msg = str(e)
         logger.error(f"Graph execution error: {traceback.format_exc()}")
-        await _update_session_status(session_id, "error", error_message=err_msg)
+        await _update_session_status(session_id, SessionStatus.ERROR, error_message=err_msg)
         await _publish_to_redis(session_id, {"type": "error", "message": err_msg})
         return False
 
@@ -154,7 +161,9 @@ async def run_learning_graph(
     """
     Async background runner for initializing the graph and streaming events.
     """
-    await _update_session_status(session_id, "running", current_phase="root")
+    await _update_session_status(
+        session_id, SessionStatus.RUNNING, current_phase=SessionPhase.ROOT
+    )
 
     graph, config = await _get_graph_and_config(session_id)
     state = {
@@ -173,7 +182,9 @@ async def run_learning_graph(
     success = await stream_graph_events(session_id, graph, config, state)
 
     if success:
-        await _update_session_status(session_id, "ready", current_phase="lesson")
+        await _update_session_status(
+            session_id, SessionStatus.READY, current_phase=SessionPhase.LESSON
+        )
     return success
 
 
@@ -254,15 +265,18 @@ async def sync_state_to_db(session_id: str, config: dict, graph_instance=None):
                             )
                             db.add(node)
                         node.status = (
-                            "active" if node_id == current_subtopic
-                            else str(metadata.get("status", "unlocked"))
+                            NodeStatus.ACTIVE.value
+                            if node_id == current_subtopic
+                            else str(metadata.get("status", NodeStatus.UNLOCKED.value))
                         )
                         node.score = scores.get(node_id) if isinstance(scores, dict) else None
                 await db.commit()
 
 
 async def resume_graph_stream(session_id: str, user_answers: list) -> bool:
-    await _update_session_status(session_id, "evaluating", current_phase="evaluator")
+    await _update_session_status(
+        session_id, SessionStatus.EVALUATING, current_phase=SessionPhase.EVALUATOR
+    )
 
     graph, config = await _get_graph_and_config(session_id)
     await graph.aupdate_state(
@@ -276,17 +290,24 @@ async def resume_graph_stream(session_id: str, user_answers: list) -> bool:
     if success:
         snapshot = await get_current_state(session_id)
         evaluation = (snapshot.values or {}).get("evaluation", {}) if snapshot else {}
-        if isinstance(evaluation, dict) and evaluation.get("next_action") == "completed":
+        if (
+            isinstance(evaluation, dict)
+            and evaluation.get("next_action") == EvaluationNextAction.COMPLETED.value
+        ):
             await _update_session_status(
-                session_id, "completed", current_phase="completed"
+                session_id, SessionStatus.COMPLETED, current_phase=SessionPhase.COMPLETED
             )
         else:
-            await _update_session_status(session_id, "ready", current_phase="evaluator")
+            await _update_session_status(
+                session_id, SessionStatus.READY, current_phase=SessionPhase.EVALUATOR
+            )
     return success
 
 
 async def advance_graph_stream(session_id: str) -> bool:
-    await _update_session_status(session_id, "running", current_phase="advancing")
+    await _update_session_status(
+        session_id, SessionStatus.RUNNING, current_phase=SessionPhase.ADVANCING
+    )
 
     graph, config = await _get_graph_and_config(session_id)
     await _publish_to_redis(
@@ -298,27 +319,35 @@ async def advance_graph_stream(session_id: str) -> bool:
         snapshot = await get_current_state(session_id)
         if snapshot and snapshot.values and _is_curriculum_completed(snapshot.values):
             await _update_session_status(
-                session_id, "completed", current_phase="completed"
+                session_id, SessionStatus.COMPLETED, current_phase=SessionPhase.COMPLETED
             )
         else:
-            await _update_session_status(session_id, "ready", current_phase="lesson")
+            await _update_session_status(
+                session_id, SessionStatus.READY, current_phase=SessionPhase.LESSON
+            )
     return success
 
 
 async def _update_session_status(
     session_id: str,
-    status: str,
-    current_phase: str | None = None,
+    status: str | SessionStatus,
+    current_phase: str | SessionPhase | None = None,
     error_message: str | None = None,
 ):
-    """Helper to update the session status and phase in the DB."""
+    """Helper to update the session status and phase in the DB with state machine validation."""
+    target_status = SessionStatus(status)
+    phase_value = current_phase.value if isinstance(current_phase, SessionPhase) else current_phase
+
     async with SessionLocal() as db:
         result = await db.execute(select(Session).filter(Session.id == session_id))
         db_session = result.scalars().first()
         if db_session:
-            db_session.status = status
-            if current_phase is not None:
-                db_session.current_phase = current_phase
+            new_status = SessionStateMachine.transition(
+                db_session.status, target_status, session_id=session_id
+            )
+            db_session.status = new_status.value
+            if phase_value is not None:
+                db_session.current_phase = str(phase_value)
             if error_message is not None:
                 db_session.error_message = error_message
             await db.commit()

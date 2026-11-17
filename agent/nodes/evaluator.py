@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent.config import get_settings
+from agent.enums import EvaluationNextAction, JourneyMode, NodeStatus
 from agent.nodes._mcq import determine_next_action, grade_mcq
 from agent.nodes._tree import (
     build_node_meta,
@@ -121,7 +122,7 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
         mastery=mastery,
     )
     evaluation["next_action"] = next_action
-    completed = next_action == "completed"
+    completed = next_action == EvaluationNextAction.COMPLETED.value
     parent_subtopic = (
         find_bridge_parent(history, current) if current not in subtopics else None
     )
@@ -131,12 +132,12 @@ async def evaluator_node(state: CognimapState) -> dict[str, Any]:
         node_meta["attempts"] = int(node_meta.get("attempts", 0)) + 1
         node_meta["best_score"] = max(float(node_meta.get("best_score", 0.0)), score)
         if completed and passed:
-            node_meta["status"] = "mastered"
+            node_meta["status"] = NodeStatus.MASTERED.value
         graph_nodes[current] = node_meta
 
     if parent_subtopic and parent_subtopic in graph_nodes and completed and passed:
         parent_meta = dict(graph_nodes[parent_subtopic])
-        parent_meta["status"] = "mastered"
+        parent_meta["status"] = NodeStatus.MASTERED.value
         graph_nodes[parent_subtopic] = parent_meta
 
     if completed and passed:
@@ -307,7 +308,7 @@ async def _expand_curriculum_on_pass(
             subtopics.append(child_id)
         if child_id not in graph_nodes:
             graph_nodes[child_id] = {
-                "status": "unlocked",
+                "status": NodeStatus.UNLOCKED.value,
                 "attempts": 0,
                 "best_score": 0.0,
             }

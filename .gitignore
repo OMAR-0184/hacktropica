@@ -9,3 +9,4 @@ cognimap_architecture.tex
 ui/
 .DS_Store
 scripts/results.json
+*.egg-info/

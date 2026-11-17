@@ -11,9 +11,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
-
+from agent.enums import EvaluationNextAction, OrchestratorAction
 from agent.nodes._llm_call import invoke_llm_json
 from agent.state import CognimapState
+
+VALID_ORCHESTRATOR_ACTIONS: set[str] = {
+    OrchestratorAction.LESSON_GENERATOR.value,
+    OrchestratorAction.QUIZ.value,
+    OrchestratorAction.EVALUATOR.value,
+    OrchestratorAction.BRIDGE.value,
+    OrchestratorAction.NEXT.value,
+}
 
 
 async def orchestrator_node(state: CognimapState) -> dict[str, Any]:
@@ -71,17 +79,21 @@ async def orchestrator_node(state: CognimapState) -> dict[str, Any]:
     quiz = state.get("quiz", {})
 
     if evaluation and "user_answers" in evaluation and "score" not in evaluation:
-        decision = "evaluator"
+        decision = OrchestratorAction.EVALUATOR.value
         reasoning = "User submitted quiz answers; routing to evaluator for grading."
     elif isinstance(evaluation, dict) and evaluation.get("next_action"):
         next_action = evaluation.get("next_action")
-        decision = "bridge" if next_action == "remediation" else "next"
+        decision = (
+            OrchestratorAction.BRIDGE.value
+            if next_action == EvaluationNextAction.REMEDIATION.value
+            else OrchestratorAction.NEXT.value
+        )
         reasoning = f"Following evaluator progression decision: {next_action}."
     elif is_mastered and current_node != "Intro to":
-        decision = "next"
+        decision = OrchestratorAction.NEXT.value
         reasoning = "Current node is mastered; routing to next."
     elif not lesson:
-        decision = "lesson_generator"
+        decision = OrchestratorAction.LESSON_GENERATOR.value
         reasoning = "New concept; routing to lesson_generator to generate comprehensive lesson content."
     else:
         # Fallback to LLM for complex state resolution (e.g. after evaluation)
@@ -97,21 +109,29 @@ async def orchestrator_node(state: CognimapState) -> dict[str, Any]:
                     {"role": "user", "content": prompt},
                 ],
                 required_keys=["next_action", "reasoning"],
-                defaults={"next_action": "next", "reasoning": "Fallback routing."},
+                defaults={
+                    "next_action": OrchestratorAction.NEXT.value,
+                    "reasoning": "Fallback routing.",
+                },
             )
             decision = res.get("next_action")
             reasoning = res.get("reasoning")
         except Exception as e:
-            decision = "next" if is_mastered else "tutor"
+            decision = OrchestratorAction.NEXT.value if is_mastered else "tutor"
             reasoning = f"Fallback due to LLM error: {str(e)}"
 
-    valid_actions = {"lesson_generator", "quiz", "evaluator", "bridge", "next"}
+    valid_actions = VALID_ORCHESTRATOR_ACTIONS
+    fallback_action = (
+        OrchestratorAction.NEXT.value
+        if is_mastered
+        else OrchestratorAction.LESSON_GENERATOR.value
+    )
     if isinstance(decision, str) and decision not in valid_actions:
-        decision = "next" if is_mastered else "lesson_generator"
+        decision = fallback_action
     elif isinstance(decision, list):
         decision = [d for d in decision if d in valid_actions]
         if not decision:
-            decision = "next" if is_mastered else "lesson_generator"
+            decision = fallback_action
 
     orchestrator_hist = list(state.get("orchestrator_history", []))
     orchestrator_hist.append({"decision": decision, "reasoning": reasoning})
@@ -126,11 +146,11 @@ def route_orchestrator(state: CognimapState) -> str | list[str]:
     """Conditional edge router based on the orchestrator's decision."""
     history = state.get("orchestrator_history", [])
     if not history:
-        return "lesson_generator"
+        return OrchestratorAction.LESSON_GENERATOR.value
 
-    last_decision = history[-1].get("decision", "lesson_generator")
+    last_decision = history[-1].get("decision", OrchestratorAction.LESSON_GENERATOR.value)
     if isinstance(last_decision, list):
         return last_decision
-    if last_decision not in {"lesson_generator", "quiz", "evaluator", "bridge", "next"}:
-        return "lesson_generator"
+    if last_decision not in VALID_ORCHESTRATOR_ACTIONS:
+        return OrchestratorAction.LESSON_GENERATOR.value
     return last_decision

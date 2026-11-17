@@ -1,5 +1,17 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Union
+
+from api.enums import (
+    SessionStatus,
+    SessionPhase,
+    JourneyAction,
+    JourneyStepStatus,
+    NodeStatus,
+    EvaluationNextAction,
+    NodeKind,
+    TraversalMode,
+    JourneyMode,
+)
 
 
 # ── Auth (JSON login) ────────────────────────────────────────
@@ -159,14 +171,14 @@ class JourneyChoicesResponse(BaseModel):
 
 class JourneyNextActionResponse(BaseModel):
     session_id: str
-    action: str
-    status: str
+    action: Union[JourneyAction, str]
+    status: Union[JourneyStepStatus, str]
     message: str
     current_node: str = ""
     waiting_on: List[str] = []
     options: List[str] = []
-    traversal_mode: Literal["bfs", "dfs"] = "dfs"
-    journey_mode: Literal["learn", "review"] = "learn"
+    traversal_mode: Union[TraversalMode, Literal["bfs", "dfs"]] = TraversalMode.DFS
+    journey_mode: Union[JourneyMode, Literal["learn", "review"]] = JourneyMode.LEARN
     can_go_back: bool = False
     previous_node: Optional[str] = None
     recommended_node: Optional[str] = None
@@ -184,11 +196,11 @@ class JourneyNextActionResponse(BaseModel):
 
 class ContinueResponse(BaseModel):
     session_id: str
-    status: str
-    action: str
+    status: Union[JourneyStepStatus, str]
+    action: Union[JourneyAction, str]
     message: str
     enqueued: bool = False
-    journey_mode: Literal["learn", "review"] = "learn"
+    journey_mode: Union[JourneyMode, Literal["learn", "review"]] = JourneyMode.LEARN
     can_go_back: bool = False
     previous_node: Optional[str] = None
     options: List[str] = []
@@ -226,7 +238,7 @@ class EvaluationResult(BaseModel):
         description="Qualitative feedback explaining to the user why they received their score.",
     )
     passed: bool = Field(..., description="True if score >= mastery_threshold")
-    next_action: str = Field(
+    next_action: Union[EvaluationNextAction, str] = Field(
         ..., description="'next_topic' or 'remediation' | 'completed' | 'pending'"
     )
     question_results: List[QuestionResult] = Field(
@@ -239,7 +251,7 @@ class EvaluationResult(BaseModel):
 
 class SubtopicProgress(BaseModel):
     name: str
-    status: str = "locked"  # locked | unlocked | active | mastered
+    status: Union[NodeStatus, str] = NodeStatus.LOCKED  # locked | unlocked | active | mastered | needs_review
     score: Optional[float] = None
     attempts: int = 0
     parent_node_id: Optional[str] = None
@@ -269,14 +281,14 @@ class ProgressResponse(BaseModel):
 
 class WorkflowSnapshotResponse(BaseModel):
     session_id: str
-    status: str
-    current_phase: Optional[str] = None
+    status: Union[SessionStatus, str]
+    current_phase: Optional[Union[SessionPhase, str]] = None
     topic: str = ""
     current_node: str = ""
-    journey_mode: Literal["learn", "review"] = "learn"
-    traversal_mode: Literal["bfs", "dfs"] = "dfs"
+    journey_mode: Union[JourneyMode, Literal["learn", "review"]] = JourneyMode.LEARN
+    traversal_mode: Union[TraversalMode, Literal["bfs", "dfs"]] = TraversalMode.DFS
     waiting_on: List[str] = []
-    next_action: Optional[str] = None
+    next_action: Optional[Union[EvaluationNextAction, str]] = None
     orchestrator_reasoning: Optional[str] = None
     options: List[str] = []
     recommended_node: Optional[str] = None
@@ -310,8 +322,8 @@ class GraphNodeMutationResponse(BaseModel):
 
 class SessionStatusResponse(BaseModel):
     session_id: str
-    status: str  # initializing | running | ready | evaluating | completed | error | archived
-    current_phase: Optional[str] = None
+    status: Union[SessionStatus, str]
+    current_phase: Optional[Union[SessionPhase, str]] = None
     topic: str = ""
     error_message: Optional[str] = None
 
@@ -319,7 +331,7 @@ class SessionStatusResponse(BaseModel):
 class SessionSummary(BaseModel):
     session_id: str
     topic: str
-    status: str
+    status: Union[SessionStatus, str]
     created_at: str
     overall_progress: float = 0.0
 

@@ -1,15 +1,15 @@
-"""BullMQ worker process for learning graph jobs."""
+"""Async Redis task queue worker powered by arq."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import secrets
-import signal
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from bullmq import Worker
+from arq.connections import RedisSettings
+from arq.worker import run_worker
 
 from api.config import get_api_settings
 from api.engine.runner import (
@@ -19,7 +19,7 @@ from api.engine.runner import (
     runtime,
 )
 from api.redis import close_redis_pool, get_redis
-from api.services.bullmq_client import ALLOWED_JOBS, QUEUE_NAME
+from api.services.task_queue import QUEUE_NAME
 
 logger = logging.getLogger("cognimap.worker")
 LOCK_TTL_MS = 660_000
@@ -47,7 +47,7 @@ async def _run_session_serially(
 ) -> bool:
     """Serialize graph writes for a session across worker processes."""
     redis = get_redis()
-    key = f"bullmq:session-lock:{session_id}"
+    key = f"task-queue:session-lock:{session_id}"
     token = secrets.token_urlsafe(24)
     while not await redis.set(key, token, nx=True, px=LOCK_TTL_MS):
         await asyncio.sleep(0.25)
@@ -80,84 +80,95 @@ async def _run_session_serially(
         )
 
 
-async def process_job(job: Any, _job_token: str) -> dict[str, str]:
-    if job.name not in ALLOWED_JOBS:
-        raise ValueError(f"Unknown learning job: {job.name}")
-
-    args = job.data.get("args") if isinstance(job.data, dict) else None
-    if not isinstance(args, list) or not args or not args[0]:
-        raise ValueError("Learning job must include a session id")
-    session_id = str(args[0])
-
-    if job.name == "start_learning_task" and 3 <= len(args) <= 6:
-        _, topic, course_mode, *rest = args
-        traversal_mode = "dfs"
-        learner_profile = ""
-        journey_v2 = False
-        if len(rest) == 2:
-            learner_profile, journey_v2 = rest
-        elif len(rest) >= 3:
-            traversal_mode, learner_profile, journey_v2 = rest[:3]
-
-        operation = lambda: run_learning_graph(
-            session_id=session_id,
-            topic=str(topic),
-            course_mode=str(course_mode),
-            traversal_mode=str(traversal_mode),
-            learner_profile=str(learner_profile or ""),
-            journey_orchestrator_v2=bool(journey_v2),
-        )
-    elif job.name == "resume_learning_task" and len(args) == 2:
-        operation = lambda: resume_graph_stream(session_id, args[1])
-    elif job.name == "advance_learning_task" and len(args) == 1:
-        operation = lambda: advance_graph_stream(session_id)
-    else:
-        raise ValueError("Invalid arguments for learning job")
-
-    await _run_session_serially(session_id, operation)
+async def start_learning_task(
+    ctx: dict[str, Any],
+    session_id: str,
+    topic: str,
+    course_mode: str = "detailed",
+    traversal_mode: str = "dfs",
+    learner_profile: str = "",
+    journey_v2: bool = False,
+    *args: Any,
+) -> dict[str, str]:
+    operation = lambda: run_learning_graph(
+        session_id=str(session_id),
+        topic=str(topic),
+        course_mode=str(course_mode),
+        traversal_mode=str(traversal_mode),
+        learner_profile=str(learner_profile or ""),
+        journey_orchestrator_v2=bool(journey_v2),
+    )
+    await _run_session_serially(str(session_id), operation)
     return {"status": "completed"}
 
 
-async def main() -> None:
+async def resume_learning_task(
+    ctx: dict[str, Any],
+    session_id: str,
+    user_answers: list,
+    *args: Any,
+) -> dict[str, str]:
+    operation = lambda: resume_graph_stream(str(session_id), user_answers)
+    await _run_session_serially(str(session_id), operation)
+    return {"status": "completed"}
+
+
+async def advance_learning_task(
+    ctx: dict[str, Any],
+    session_id: str,
+    *args: Any,
+) -> dict[str, str]:
+    operation = lambda: advance_graph_stream(str(session_id))
+    await _run_session_serially(str(session_id), operation)
+    return {"status": "completed"}
+
+
+async def process_job(job: Any, _job_token: str = "") -> dict[str, str]:
+    """Compatibility dispatcher for processing job objects."""
+    job_name = getattr(job, "name", "")
+    data = getattr(job, "data", {})
+    args = data.get("args") if isinstance(data, dict) else None
+    if not isinstance(args, list) or not args:
+        raise ValueError("Learning job must include arguments")
+
+    ctx = {"job": job}
+    if job_name == "start_learning_task":
+        return await start_learning_task(ctx, *args)
+    elif job_name == "resume_learning_task":
+        return await resume_learning_task(ctx, *args)
+    elif job_name == "advance_learning_task":
+        return await advance_learning_task(ctx, *args)
+    else:
+        raise ValueError(f"Unknown learning job: {job_name}")
+
+
+async def startup(ctx: dict[str, Any]) -> None:
     settings = get_api_settings()
     settings.validate_runtime()
     await runtime.start()
+    logger.info("Task queue worker started queue=%s", QUEUE_NAME)
 
-    shutdown = asyncio.Event()
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, shutdown.set)
 
-    worker = Worker(
-        QUEUE_NAME,
-        process_job,
-        {
-            "connection": settings.redis_url,
-            "concurrency": 10,
-            "lockDuration": LOCK_TTL_MS,
-            "lockRenewTime": LOCK_TTL_MS // 2,
-        },
-    )
-    worker.on(
-        "failed",
-        lambda job, error: logger.error(
-            "BullMQ job failed id=%s name=%s error=%s",
-            getattr(job, "id", None),
-            getattr(job, "name", None),
-            error,
-        ),
-    )
-    worker.on("error", lambda error, *_: logger.exception("BullMQ worker error: %s", error))
+async def shutdown(ctx: dict[str, Any]) -> None:
+    await runtime.stop()
+    await close_redis_pool()
+    logger.info("Task queue worker stopped")
 
-    logger.info("BullMQ worker started queue=%s", QUEUE_NAME)
-    try:
-        await shutdown.wait()
-    finally:
-        await worker.close()
-        await runtime.stop()
-        await close_redis_pool()
+
+class WorkerSettings:
+    functions = [start_learning_task, resume_learning_task, advance_learning_task]
+    redis_settings = RedisSettings.from_dsn(get_api_settings().redis_url)
+    queue_name = QUEUE_NAME
+    max_jobs = 10
+    on_startup = startup
+    on_shutdown = shutdown
+    job_timeout = 600
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    run_worker(WorkerSettings)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    main()

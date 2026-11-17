@@ -48,7 +48,7 @@ async def start_learning(
     db: AsyncSession = Depends(get_db),
 ):
     """Start a new asynchronous learning session."""
-    from api.services.bullmq_client import get_queue_client
+    from api.services.task_queue import get_queue_client
 
     queue = get_queue_client()
     return await create_session(

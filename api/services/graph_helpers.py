@@ -12,6 +12,14 @@ import hashlib
 import json
 from typing import Any
 
+from api.enums import (
+    EvaluationNextAction,
+    JourneyAction,
+    JourneyMode,
+    JourneyStepStatus,
+    SessionStatus,
+    TraversalMode,
+)
 from api.schemas.learning import (
     ContinueRequest,
     NodeHierarchyMeta,
@@ -52,13 +60,21 @@ def snapshot_next_nodes(snapshot) -> list[str]:
 
 
 def normalize_journey_mode(value: str | None) -> str:
-    mode = str(value or "learn").strip().lower()
-    return mode if mode in {"learn", "review"} else "learn"
+    mode = str(value or JourneyMode.LEARN.value).strip().lower()
+    return (
+        mode
+        if mode in {JourneyMode.LEARN.value, JourneyMode.REVIEW.value}
+        else JourneyMode.LEARN.value
+    )
 
 
 def normalize_traversal_mode(value: str | None) -> str:
-    mode = str(value or "dfs").strip().lower()
-    return mode if mode in {"bfs", "dfs"} else "dfs"
+    mode = str(value or TraversalMode.DFS.value).strip().lower()
+    return (
+        mode
+        if mode in {TraversalMode.BFS.value, TraversalMode.DFS.value}
+        else TraversalMode.DFS.value
+    )
 
 
 def normalize_node_list(value: Any) -> list[str]:
@@ -264,11 +280,15 @@ def build_next_action_payload(
     }
 
     # ── Status-based early returns ────────────────────────────
-    if session_status in {"initializing", "running", "evaluating"}:
+    if session_status in {
+        SessionStatus.INITIALIZING.value,
+        SessionStatus.RUNNING.value,
+        SessionStatus.EVALUATING.value,
+    }:
         return {
             "session_id": session_id,
-            "action": "wait",
-            "status": "waiting",
+            "action": JourneyAction.WAIT.value,
+            "status": JourneyStepStatus.WAITING.value,
             "message": f"Session is '{session_status}'. Wait for readiness.",
             "current_node": current_node,
             "waiting_on": waiting_on,
@@ -283,11 +303,11 @@ def build_next_action_payload(
             "required_input": None,
             **hierarchy_payload,
         }
-    if session_status == "completed":
+    if session_status == SessionStatus.COMPLETED.value:
         return {
             "session_id": session_id,
-            "action": "completed",
-            "status": "completed",
+            "action": JourneyAction.COMPLETED.value,
+            "status": JourneyStepStatus.COMPLETED.value,
             "message": "Learning journey completed.",
             "current_node": current_node,
             "waiting_on": waiting_on,
@@ -302,11 +322,11 @@ def build_next_action_payload(
             "required_input": None,
             **hierarchy_payload,
         }
-    if session_status in {"archived", "error"}:
+    if session_status in {SessionStatus.ARCHIVED.value, SessionStatus.ERROR.value}:
         return {
             "session_id": session_id,
-            "action": "blocked",
-            "status": "blocked",
+            "action": JourneyAction.BLOCKED.value,
+            "status": JourneyStepStatus.BLOCKED.value,
             "message": f"Session is '{session_status}' and cannot continue.",
             "current_node": current_node,
             "waiting_on": waiting_on,
@@ -326,8 +346,8 @@ def build_next_action_payload(
     if "evaluator" in waiting_on:
         return {
             "session_id": session_id,
-            "action": "take_quiz",
-            "status": "ready",
+            "action": JourneyAction.TAKE_QUIZ.value,
+            "status": JourneyStepStatus.READY.value,
             "message": "Submit quiz answers to continue. Optionally preselect your next branch.",
             "current_node": current_node,
             "waiting_on": waiting_on,
@@ -345,14 +365,15 @@ def build_next_action_payload(
 
     evaluation = values.get("evaluation", {})
     completed_eval = (
-        isinstance(evaluation, dict) and evaluation.get("next_action") == "completed"
+        isinstance(evaluation, dict)
+        and evaluation.get("next_action") == EvaluationNextAction.COMPLETED.value
     )
     if {"next", "bridge"} & set(waiting_on) or completed_eval:
         if "bridge" in waiting_on and "next" not in waiting_on:
             return {
                 "session_id": session_id,
-                "action": "advance_remediation",
-                "status": "ready",
+                "action": JourneyAction.ADVANCE_REMEDIATION.value,
+                "status": JourneyStepStatus.READY.value,
                 "message": "Advance to remediation step.",
                 "current_node": current_node,
                 "waiting_on": waiting_on,
@@ -369,8 +390,12 @@ def build_next_action_payload(
             }
         return {
             "session_id": session_id,
-            "action": "choose_branch" if options else "advance",
-            "status": "ready",
+            "action": (
+                JourneyAction.CHOOSE_BRANCH.value
+                if options
+                else JourneyAction.ADVANCE.value
+            ),
+            "status": JourneyStepStatus.READY.value,
             "message": "Choose your next branch or continue with the recommended option.",
             "current_node": current_node,
             "waiting_on": waiting_on,
@@ -389,8 +414,8 @@ def build_next_action_payload(
     # ── Fallback: no actionable interrupt ─────────────────────
     return {
         "session_id": session_id,
-        "action": "wait",
-        "status": "ready",
+        "action": JourneyAction.WAIT.value,
+        "status": JourneyStepStatus.READY.value,
         "message": "No immediate action required. Refresh state shortly.",
         "current_node": current_node,
         "waiting_on": waiting_on,

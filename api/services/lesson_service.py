@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from api.engine.runner import get_current_state, apply_state_updates
+from api.enums import SessionStatus
 from api.schemas.learning import (
     LessonResponse,
     TutorContent,
@@ -37,12 +38,12 @@ async def get_lesson(
     Generates a starter lesson on-the-fly if no lesson exists yet.
     """
     # State guards
-    if db_session.status in ["initializing", "running"]:
+    if db_session.status in [SessionStatus.INITIALIZING.value, SessionStatus.RUNNING.value]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot fetch lesson while session is '{db_session.status}'. Wait for 'ready'.",
         )
-    if db_session.status in ["error", "archived"]:
+    if db_session.status in [SessionStatus.ERROR.value, SessionStatus.ARCHIVED.value]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is '{db_session.status}' and cannot proceed.",

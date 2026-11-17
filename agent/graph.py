@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, StateGraph
 
+from agent.enums import OrchestratorAction
 from agent.nodes.bridge import bridge_node_generator
 
 from agent.nodes.evaluator import evaluator_node
@@ -37,12 +38,12 @@ def build_graph(checkpointer=None) -> StateGraph:
         "orchestrator",
         route_orchestrator,
         {
-            "lesson_generator": "lesson_generator",
-            "quiz": "quiz",
-            "evaluator": "evaluator",
-            "bridge": "bridge",
-            "next": "next",
-            "__end__": END,
+            OrchestratorAction.LESSON_GENERATOR.value: "lesson_generator",
+            OrchestratorAction.QUIZ.value: "quiz",
+            OrchestratorAction.EVALUATOR.value: "evaluator",
+            OrchestratorAction.BRIDGE.value: "bridge",
+            OrchestratorAction.NEXT.value: "next",
+            OrchestratorAction.END.value: END,
         },
     )
 

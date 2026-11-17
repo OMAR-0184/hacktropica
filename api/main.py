@@ -10,7 +10,7 @@ from api.engine.runner import runtime
 from api.middleware.error_handler import global_exception_handler
 from api.middleware.rate_limiter import RateLimitMiddleware
 from api.redis import get_redis, close_redis_pool
-from api.services.bullmq_client import (
+from api.services.task_queue import (
     start_queue_client,
     get_queue_client,
     close_queue_client,
